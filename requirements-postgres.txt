@@ -1,0 +1,2 @@
+# Only needed if DATABASE_URL points to PostgreSQL (e.g. Render Postgres). SQLite and MySQL do not need it.
+psycopg2-binary>=2.9,<3

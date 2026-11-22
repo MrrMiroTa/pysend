@@ -1,0 +1,37 @@
+# Render Blueprint. Dashboard -> New -> Blueprint -> pick this repo.
+# Needs a PAID instance because of the persistent disk (Free has no disk and sleeps after 15 min).
+services:
+  - type: web
+    name: gps-expiry-notifier
+    runtime: docker
+    plan: starter            # try "standard" (2 GB) if the table image fails with out-of-memory
+    healthCheckPath: /healthz
+    disk:
+      name: data
+      mountPath: /var/data   # Excel working copy, SQLite database, report history
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: TIMEZONE
+        value: Asia/Phnom_Penh
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_USER
+        value: admin
+      - key: ADMIN_PASSWORD_HASH     # python app.py hash   (run on your computer)
+        sync: false
+      - key: API_ID
+        sync: false
+      - key: API_HASH
+        sync: false
+      - key: TELEGRAM_SESSION_STRING # python scripts/make_session_string.py (run on your computer)
+        sync: false
+      - key: CONTACT_PHONE
+        sync: false
+      - key: MIN_DELAY
+        value: "8"
+      - key: MAX_DELAY
+        value: "20"
+      - key: MAX_PER_RUN
+        value: "80"
