@@ -129,10 +129,19 @@ class TelegramBot:
         # they hand a coroutine to that loop with run_coroutine_threadsafe(), which is
         # thread-safe and returns immediately. State flows back via thread-safe objects only
         # (LogBuffer, the progress dict, threading.Event) and the UI polls /api/status.
-        self.loop = asyncio.new_event_loop()
-        threading.Thread(target=self.loop.run_forever, daemon=True, name="telethon-loop").start()
+        self.loop, self._thread, self._loop_lock = None, None, threading.Lock()
+        self._ensure_loop()
         self._busy = threading.Lock()      # allows one batch at a time
         self._stop = threading.Event()     # set by the Stop button, read inside the coroutine
+
+    def _ensure_loop(self):
+        """(Re)start the asyncio thread if it is not alive. gunicorn with --preload forks the process
+        after import, and threads do not survive a fork: the loop would exist but never run."""
+        with self._loop_lock:
+            if self._thread is None or not self._thread.is_alive():
+                self.loop = asyncio.new_event_loop()
+                self._thread = threading.Thread(target=self.loop.run_forever, daemon=True, name="telethon-loop")
+                self._thread.start()
 
     @property
     def running(self):
@@ -146,6 +155,8 @@ class TelegramBot:
         self.phone = phone  # contact number typed in the UI (overrides CONTACT_PHONE)
         self.pending = []
         self.progress = dict(sent=0, failed=0, total=min(len(groups), limit))
+        self._ensure_loop()
+        self.log.add("info", f"Batch accepted: {self.progress['total']} client(s).")
         asyncio.run_coroutine_threadsafe(self._job(groups[:limit], template), self.loop)
         return True
 
@@ -206,6 +217,7 @@ class TelegramBot:
             finally:
                 await self._close_browser(pw, browser)
         try:
+            self._ensure_loop()
             png = asyncio.run_coroutine_threadsafe(go(), self.loop).result(timeout=60)
         except Exception:
             png = None
