@@ -160,6 +160,9 @@ class TelegramBot:
 
     # ---- table image (headless Chromium renders HTML, so Khmer is shaped correctly) ----
     async def _open_browser(self):
+        if os.getenv("DISABLE_IMAGE") == "1":  # small/free hosts: skip Chromium, send the text list
+            self.log.add("info", "Table image is turned off (DISABLE_IMAGE=1); sending text list.")
+            return None, None
         try:
             from playwright.async_api import async_playwright
             pw = await async_playwright().start()
@@ -265,7 +268,7 @@ class TelegramBot:
                 self.log.add("error", "Telegram session not logged in. Run: python scripts/login_telegram.py (or set TELEGRAM_SESSION_STRING)")
                 stopped = ("Telegram session not logged in. Run scripts/login_telegram.py", 0)
                 return
-            self.log.add("info", "Telegram connected. Starting the table-image browser...")
+            self.log.add("info", "Telegram connected.")
             try:
                 pw, browser = await asyncio.wait_for(self._open_browser(), 60)
             except asyncio.TimeoutError:
