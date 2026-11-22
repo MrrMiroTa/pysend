@@ -24,7 +24,7 @@
     const res = await fetch(url, { credentials: "same-origin", ...opt, headers });
     if (res.status === 401) { location.href = "/login"; throw new Error("signed out"); }
     const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j.error || "Request failed");
+    if (!res.ok) throw new Error(j.error || `Request failed (HTTP ${res.status}) - server not responding or restarted`);
     return j;
   }
   const post = (path, body) => api(`${path}?${qs()}`, { method: "POST", body: JSON.stringify(body) });

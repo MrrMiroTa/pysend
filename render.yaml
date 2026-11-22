@@ -4,7 +4,7 @@ services:
   - type: web
     name: gps-expiry-notifier
     runtime: docker
-    plan: starter            # try "standard" (2 GB) if the table image fails with out-of-memory
+    plan: standard           # 2 GB: Chromium (table image) gets OOM-killed on Starter (512 MB)
     healthCheckPath: /healthz
     disk:
       name: data
