@@ -275,6 +275,7 @@
   async function loadReport() {
     try {
       const d = await api("/api/report?" + rq()), m = d.summary;
+      if (d.keep_from) { $("#rFrom").min = $("#rTo").min = d.keep_from; $("#keepNote").textContent = `Report keeps the last 3 months (from ${d.keep_from}); older days are removed automatically.`; }
       setNum("#rTotal", m.total); setNum("#rSent", m.sent); setNum("#rFailed", m.failed); setNum("#rSkipped", m.skipped);
       $("#rClients").textContent = m.clients_sent.toLocaleString(); $("#rRate").textContent = (m.total ? Math.round((m.sent / m.total) * 100) : 0) + "% success";
       drawChart(d.days);
