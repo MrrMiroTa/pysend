@@ -130,10 +130,10 @@
 
         <section class="card tbl">
           <div class="scroll"><table>
-            <thead><tr><th class="ck"><input type="checkbox" id="all" aria-label="Select all"></th><th>USER / ID</th><th class="hide-sm">ប្រភេទ</th><th>ស្លាកលេខ</th><th class="hide-sm">IMEI</th><th class="hide-sm">ថ្ងៃផុតកំណត់</th><th>នៅសល់</th><th>ស្ថានភាព</th></tr></thead>
+            <thead><tr><th class="ck"><input type="checkbox" id="all" aria-label="Select all"></th><th>USER / ID</th><th class="hide-sm">NAME</th><th class="hide-sm">ប្រភេទ</th><th>ស្លាកលេខ</th><th class="hide-sm">IMEI</th><th class="hide-sm">ថ្ងៃផុតកំណត់</th><th>នៅសល់</th><th>ស្ថានភាព</th></tr></thead>
             <tbody id="rows"></tbody></table>
             <div id="empty" class="empty" hidden><svg class="ic xl"><use href="#i-file-spreadsheet"/></svg><p id="emptyMsg"></p>
-              <p class="muted small">Required columns (first sheet, header in row 1): <b>user, type, plate, imei, expiry_date, status, sent_at</b>. Other columns are ignored.</p>
+              <p class="muted small">Required columns (first sheet, header in row 1): <b>user, type, plate, imei, expiry_date, status, sent_at</b>. Optional: <b>name</b> (e.g. WL112, shown in the table). Other columns are ignored.</p>
               <div class="row-btns"><button id="pick2" class="btn primary" type="button"><svg class="ic"><use href="#i-upload"/></svg>Browse file</button>
               <button id="dlTemplate2" class="btn" type="button"><svg class="ic"><use href="#i-download"/></svg>Download template</button></div></div></div>
           <div class="tfoot"><span id="pageInfo">Showing 0 results</span>

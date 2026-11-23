@@ -5,7 +5,9 @@ import numpy as np
 import pandas as pd
 from timeutil import now as now_local, today as today_local
 
-COLUMNS = ["user", "type", "plate", "imei", "expiry_date", "status", "sent_at"]
+COLUMNS = ["user", "type", "plate", "imei", "expiry_date", "status", "sent_at"]   # required
+OPTIONAL = ["name"]                                                                 # e.g. WL112; may be missing
+ALL_COLS = COLUMNS + OPTIONAL
 # Header names we accept (compared lower-case, ignoring spaces / _ / - / "/"). Khmer headers too.
 SYNONYMS = {
     "user": "user userid username userorid useridorusername telegram telegramid telegramuser telegramusername chatid client clientid contact",
@@ -14,6 +16,7 @@ SYNONYMS = {
     "imei": "imei imeino imeinumber deviceimei",
     "expiry_date": "expirydate expirationdate expiry expire expiredate expiration expdate enddate duedate ថ្ងៃផុតកំណត់",
     "status": "status", "sent_at": "sentat",
+    "name": "name devicename unitname vehiclename trackername gpsname ឈ្មោះ",
 }
 SYN = {k: canon for canon, words in SYNONYMS.items() for k in words.split()}
 
@@ -24,8 +27,8 @@ SOON = 15  # days: above this a unit is "safe" (green)
 
 
 def _read(path):
-    """Read the FIRST sheet (header in row 1). Only the 7 required columns are kept; every other column
-    (notes, etc.) is ignored. If any of the 7 is missing the whole file is rejected."""
+    """Read the FIRST sheet (header in row 1). The 7 required columns + the optional "name" column are kept;
+    every other column (notes, etc.) is ignored. If any of the 7 is missing the whole file is rejected."""
     if path.lower().endswith(".csv"):
         df = pd.read_csv(path, dtype=str, encoding="utf-8-sig").fillna("")  # utf-8-sig: Excel-saved CSV with Khmer
     else:
@@ -42,6 +45,13 @@ def _read(path):
             picked[canon] = pos
     if "user" not in picked and "id" in keys:      # a bare "ID" column = last resort for user
         picked["user"] = keys.index("id")
+    for canon in OPTIONAL:                         # optional columns: exact name first, then friendly names
+        if canon in picked:
+            continue
+        for pos, k in enumerate(keys):
+            if pos not in picked.values() and (k == _key(canon) or SYN.get(k) == canon):
+                picked[canon] = pos
+                break
     missing = [c for c in COLUMNS if c not in picked]
     if missing:
         raise ValueError(
@@ -49,9 +59,14 @@ def _read(path):
             f"(other columns are ignored). Columns found: {', '.join(found[:15]) or 'none'}. "
             "Use the template button to get a correct file. "
             "ឯកសារត្រូវមាន column ទាំង 7 គ្រប់គ្រាន់ ទើប import បាន (column ផ្សេងៗត្រូវបានរំលង)។")
-    df = df.iloc[:, [picked[c] for c in COLUMNS]].copy()   # keep ONLY the 7, in this order
-    df.columns = COLUMNS
-    for col in COLUMNS:
+    have = [c for c in ALL_COLS if c in picked]
+    df = df.iloc[:, [picked[c] for c in have]].copy()      # keep ONLY the known columns, in this order
+    df.columns = have
+    for col in OPTIONAL:
+        if col not in df.columns:
+            df[col] = ""                                   # old files without the optional column still import
+    df = df[ALL_COLS]
+    for col in ALL_COLS:
         df[col] = df[col].astype(str).str.strip()
     blank = (df[["user", "type", "plate", "imei", "expiry_date"]] == "").all(axis=1)  # empty/formatted-only rows
     df = df[~blank]
@@ -126,7 +141,7 @@ class ExcelManager:
 
     def _load(self):  # lock held
         if self._df is None:
-            self._df = _read(self.path) if os.path.exists(self.path) else pd.DataFrame(columns=COLUMNS)
+            self._df = _read(self.path) if os.path.exists(self.path) else pd.DataFrame(columns=ALL_COLS)
         return self._df
 
     def _changed(self):  # lock held
@@ -184,10 +199,11 @@ class ExcelManager:
             d = days.to_numpy(dtype="float64", na_value=np.nan)
             state = np.select([sent, np.isnan(d), d < 0, d <= thr, d <= np.maximum(SOON, thr)],
                               ["sent", "invalid", "expired", "due", "approaching"], default="safe")
-            out = [dict(id=i, user=u, type=t or "Normal", plate=p, imei=m, expiry=e,
+            names = df["name"] if "name" in df.columns else [""] * len(df)  # working file saved before "name" existed
+            out = [dict(id=i, user=u, name=nm, type=t or "Normal", plate=p, imei=m, expiry=e,
                         days=(None if x != x else int(x)), state=s, sent_at=a)
-                   for i, u, t, p, m, e, x, s, a in zip(range(len(df)), df["user"], df["type"], df["plate"], df["imei"],
-                                                        df["expiry_date"], d.tolist(), state.tolist(), df["sent_at"])]
+                   for i, u, nm, t, p, m, e, x, s, a in zip(range(len(df)), df["user"], names, df["type"], df["plate"], df["imei"],
+                                                            df["expiry_date"], d.tolist(), state.tolist(), df["sent_at"])]
             self._cache = {key: out}
             return out
 
@@ -224,12 +240,12 @@ class ExcelManager:
 
     @staticmethod
     def export(rows):
-        """Same 7 columns the importer needs (so the file can be imported again) + info columns that import ignores."""
-        df = pd.DataFrame([{"user": safe_cell(r["user"]), "type": safe_cell(r["type"]), "plate": safe_cell(r["plate"]),
+        """Same columns the importer needs (so the file can be imported again) + info columns that import ignores."""
+        df = pd.DataFrame([{"user": safe_cell(r["user"]), "name": safe_cell(r.get("name", "")), "type": safe_cell(r["type"]), "plate": safe_cell(r["plate"]),
                             "imei": safe_cell(r["imei"]), "expiry_date": r["expiry"],
                             "status": "Sent" if r["state"] == "sent" else "", "sent_at": safe_cell(r["sent_at"]),
                             "days_remaining": r["days"], "state": r["state"]} for r in rows],
-                          columns=COLUMNS + ["days_remaining", "state"])
+                          columns=ALL_COLS + ["days_remaining", "state"])
         buf = io.BytesIO()
         df.to_excel(buf, index=False, engine="openpyxl")
         buf.seek(0)
@@ -238,8 +254,8 @@ class ExcelManager:
     @staticmethod
     def template():
         nxt = (today_local() + timedelta(days=10)).isoformat()
-        df = pd.DataFrame([["@username", "Normal", "ភ្នំពេញ 2A-1234", "862012345678901", nxt, "", ""],
-                           ["123456789", "Company", "សៀមរាប 1C-4321", "862012345678902", nxt, "", ""]], columns=COLUMNS)
+        df = pd.DataFrame([["@username", "Normal", "ភ្នំពេញ 2A-1234", "862012345678901", nxt, "", "", "WL112"],
+                           ["123456789", "Company", "សៀមរាប 1C-4321", "862012345678902", nxt, "", "", "WL113"]], columns=ALL_COLS)
         buf = io.BytesIO()
         df.to_excel(buf, index=False, engine="openpyxl")
         buf.seek(0)

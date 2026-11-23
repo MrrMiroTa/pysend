@@ -77,7 +77,13 @@ def explain(e):
     return REASONS.get(name, f"{name}: {msg}"[:200]), f"{name}: {msg}"
 
 
+def has_names(units):
+    return any((u.get("name") or "").strip() for u in units)
+
+
 def text_table(units):  # fallback when the image cannot be rendered
+    if has_names(units):
+        return "\n".join(f"{u.get('name', '')} | {u['plate']} | {u['imei']} | {fmt_date(u['expiry'])}" for u in units)
     return "\n".join(f"{u['plate']} | {u['imei']} | {fmt_date(u['expiry'])}" for u in units)
 
 
@@ -111,11 +117,14 @@ def font_css():
 
 
 def card_html(units):
+    named = has_names(units)  # the Name column (e.g. WL112) appears only when the Excel file has names
     rows = "".join(
-        f"<tr><td class=p>{html.escape(u['plate'])}</td><td>{html.escape(u['imei'])}</td>"
+        "<tr>" + (f"<td>{html.escape(u.get('name') or '')}</td>" if named else "") +
+        f"<td class=p>{html.escape(u['plate'])}</td><td>{html.escape(u['imei'])}</td>"
         f"<td><span class=b>{fmt_date(u['expiry'])}</span></td></tr>" for u in units)
+    head = ("<th>Name</th>" if named else "") + "<th>Plate Number</th><th>IMEI</th><th>Expiration Date</th>"
     return (f"<meta charset=utf-8><style>{font_css()}{CARD_CSS}</style><div id=card><table>"
-            f"<tr><th>Plate Number</th><th>IMEI</th><th>Expiration Date</th></tr>{rows}</table></div>")
+            f"<tr>{head}</tr>{rows}</table></div>")
 
 
 class TelegramBot:
