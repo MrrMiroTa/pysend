@@ -87,6 +87,7 @@
       cb.addEventListener("change", () => { cb.checked ? selected.add(r.id) : selected.delete(r.id); tr.classList.toggle("sel", cb.checked); info(); });
       td(tr, cb, "ck");
       const u = el("div", "cell-user"); u.append(avatar(r.user), el("span", "", r.user)); td(tr, u);
+      td(tr, el("span", "mono", r.name || "—"), "hide-sm");
       td(tr, el("span", "pill " + (r.type.toLowerCase().startsWith("comp") ? "t-company" : "t-normal"), r.type), "hide-sm");
       td(tr, r.plate, "plate"); td(tr, el("span", "mono", r.imei), "hide-sm"); td(tr, fmt(r.expiry), "hide-sm");
       td(tr, r.days === null ? "—" : el("span", "pill d-" + r.state, r.days + " ថ្ងៃ"));

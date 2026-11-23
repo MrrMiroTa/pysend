@@ -181,7 +181,7 @@ def in_filter(r, f, n, c):
 
 
 def matches(r, q):
-    return not q or q in f"{r['user']} {r['plate']} {r['imei']}".lower()
+    return not q or q in f"{r['user']} {r.get('name', '')} {r['plate']} {r['imei']}".lower()
 
 
 def thr_of(r, n, c):
