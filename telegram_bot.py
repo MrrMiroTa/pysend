@@ -16,7 +16,7 @@ class LogBuffer:
     def add(self, level, msg):
         with self.lock:
             self.n += 1
-            self.items.append(dict(id=self.n, t=now_local().strftime("%H:%M:%S"), level=level, msg=msg))
+            self.items.append(dict(id=self.n, t=time.strftime("%H:%M:%S"), level=level, msg=msg))
 
     def since(self, n):
         with self.lock:
@@ -164,11 +164,10 @@ class TelegramBot:
             from playwright.async_api import async_playwright
             pw = await async_playwright().start()
             try:
-                args = ["--disable-dev-shm-usage", "--disable-gpu", "--disable-extensions", "--no-zygote",
-                        "--disable-background-networking", "--mute-audio"]  # Docker's /dev/shm is tiny; keep RAM low
+                args = ["--disable-dev-shm-usage"]  # Docker's /dev/shm is tiny
                 if (hasattr(os, "geteuid") and os.geteuid() == 0) or os.getenv("CHROMIUM_NO_SANDBOX") == "1":
                     args.append("--no-sandbox")  # Chromium refuses to start as root otherwise (containers)
-                return pw, await pw.chromium.launch(args=args, timeout=45000)
+                return pw, await pw.chromium.launch(args=args)
             except Exception:
                 await pw.stop()
                 raise
@@ -187,8 +186,8 @@ class TelegramBot:
     async def _png(self, browser, units):
         page = await browser.new_page(device_scale_factor=2, viewport={"width": 600, "height": 400})
         try:
-            await page.set_content(card_html(units), timeout=30000)
-            return await page.locator("#card").screenshot(type="png", timeout=30000)
+            await page.set_content(card_html(units))
+            return await page.locator("#card").screenshot(type="png")
         finally:
             await page.close()
 
@@ -257,20 +256,13 @@ class TelegramBot:
         stopped = None  # (reason, index of first group that was NOT attempted)
         try:
             sess = self.cfg.get("SESSION_STRING")  # cloud hosting: session kept in an environment variable
-            client = TelegramClient(StringSession(sess) if sess else self.cfg["SESSION"], self.cfg["API_ID"], self.cfg["API_HASH"],
-                                    connection_retries=2, retry_delay=1, timeout=15)
-            self.log.add("info", "Connecting to Telegram...")
-            await asyncio.wait_for(client.connect(), 40)   # never hang forever (raises TimeoutError)
-            if not await asyncio.wait_for(client.is_user_authorized(), 30):
+            client = TelegramClient(StringSession(sess) if sess else self.cfg["SESSION"], self.cfg["API_ID"], self.cfg["API_HASH"])
+            await client.connect()
+            if not await client.is_user_authorized():
                 self.log.add("error", "Telegram session not logged in. Run: python scripts/login_telegram.py (or set TELEGRAM_SESSION_STRING)")
                 stopped = ("Telegram session not logged in. Run scripts/login_telegram.py", 0)
                 return
-            self.log.add("info", "Telegram connected. Starting the table-image browser...")
-            try:
-                pw, browser = await asyncio.wait_for(self._open_browser(), 60)
-            except asyncio.TimeoutError:
-                pw = browser = None
-                self.log.add("warn", "Table-image browser did not start in 60s; using text list instead.")
+            pw, browser = await self._open_browser()
             self.log.add("info", f"Sending to {len(groups)} client(s)...")
             for n, units in enumerate(groups, 1):
                 if self._stop.is_set():
@@ -280,8 +272,8 @@ class TelegramBot:
                 who = units[0]["user"]
                 target = who.lstrip("@")
                 try:
-                    entity = await asyncio.wait_for(client.get_entity(int(target) if target.lstrip("-").isdigit() else target), 30)
-                    await asyncio.wait_for(self._deliver(client, entity, browser, units, caption(template, units, self.cfg, getattr(self, "phone", None))), 180)
+                    entity = await client.get_entity(int(target) if target.lstrip("-").isdigit() else target)
+                    await self._deliver(client, entity, browser, units, caption(template, units, self.cfg, getattr(self, "phone", None)))
                     self.progress["sent"] += 1
                     self._record(batch, units, "sent", "Force resend (was already sent before)" if any(u["state"] == "sent" for u in units) else "")
                     self.log.add("ok", f"[{n}/{len(groups)}] Sent to {who} ({len(units)} unit(s))")
