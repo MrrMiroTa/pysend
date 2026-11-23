@@ -2,7 +2,8 @@
    users     - admin login accounts
    send_log  - the Report (one row per client message attempt, with the day)
 SQLite by default (zero setup). MySQL/MariaDB/PostgreSQL via DATABASE_URL."""
-import os, re
+import calendar, os, re
+from datetime import date
 
 from sqlalchemy import (Boolean, Column, Integer, MetaData, String, Table, case, create_engine, delete,
                         event, func, inspect, insert, select, text, update)
@@ -34,6 +35,31 @@ send_log = Table(
     Column("detail", String(500)),
     Column("sent_by", String(64)),                              # which admin pressed Send
 )
+
+
+send_unit_log = Table(                                          # the Report, one row per plate (for the Excel export)
+    "send_unit_log", md,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("ts", String(19), index=True),                       # date + time sent
+    Column("day", String(10), index=True),
+    Column("batch", String(20)),
+    Column("user", String(190)),
+    Column("name", String(190)),                                # e.g. WL112
+    Column("plate", String(190)),
+    Column("imei", String(64)),
+    Column("expiry", String(32)),
+    Column("status", String(10), index=True),                   # sent / failed / skipped
+)
+
+RETENTION_MONTHS = 3                                            # the Report keeps only the last 3 months
+
+
+def months_before(d, n=RETENTION_MONTHS):
+    """Same calendar day n months earlier (clamped to the month's length)."""
+    y, m = d.year, d.month - n
+    while m < 1:
+        m, y = m + 12, y - 1
+    return d.replace(year=y, month=m, day=min(d.day, calendar.monthrange(y, m)[1]))
 
 
 def data_dir(base):
@@ -132,11 +158,43 @@ class History:
     def __init__(self, engine):
         self.e = engine
 
-    def add(self, ts, batch, user, units, plates, status, reason="", detail="", sent_by=""):
+    def add(self, ts, batch, user, units, plates, status, reason="", detail="", sent_by="", unit_rows=()):
         with self.e.begin() as c:
             c.execute(insert(send_log).values(
                 ts=ts, day=ts[:10], batch=batch, user=user[:190], units=units, plates=plates[:400], status=status,
                 reason=(reason or "")[:300], detail=(detail or "")[:500], sent_by=(sent_by or "")[:64]))
+            if unit_rows:
+                c.execute(insert(send_unit_log), [dict(
+                    ts=ts, day=ts[:10], batch=batch, user=user[:190], name=(u.get("name") or "")[:190],
+                    plate=(u.get("plate") or "")[:190], imei=(u.get("imei") or "")[:64],
+                    expiry=(u.get("expiry") or "")[:32], status=status) for u in unit_rows])
+        try:
+            self.purge(date.fromisoformat(ts[:10]))                 # every new day pushes the oldest day out
+        except Exception:
+            pass                                                    # never lose a report row because cleanup failed
+
+    @staticmethod
+    def keep_from(today):
+        """First day that is still kept: today minus 3 months (on 02-04 the data of 01-01 is gone)."""
+        return months_before(today).isoformat()
+
+    def purge(self, today):
+        cut = self.keep_from(today)
+        with self.e.begin() as c:
+            n = c.execute(delete(send_log).where(send_log.c.day < cut)).rowcount or 0
+            n += c.execute(delete(send_unit_log).where(send_unit_log.c.day < cut)).rowcount or 0
+        return n
+
+    def unit_rows(self, status="all", d_from=None, d_to=None, limit=100000):
+        q = select(send_unit_log).order_by(send_unit_log.c.id.desc()).limit(limit)
+        if status in ("sent", "failed", "skipped"):
+            q = q.where(send_unit_log.c.status == status)
+        if d_from:
+            q = q.where(send_unit_log.c.day >= d_from)
+        if d_to:
+            q = q.where(send_unit_log.c.day <= d_to)
+        with self.e.connect() as c:
+            return [dict(r) for r in c.execute(q).mappings()]
 
     @staticmethod
     def _count(status):

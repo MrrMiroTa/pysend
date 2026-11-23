@@ -271,7 +271,7 @@ class TelegramBot:
         shown = ", ".join(plates[:3]) + (f" +{len(plates) - 3} more" if len(plates) > 3 else "")
         try:
             self.history.add(now_local().strftime("%Y-%m-%d %H:%M:%S"), batch, units[0]["user"], len(units),
-                             shown, status, reason, detail, getattr(self, "actor", ""))
+                             shown, status, reason, detail, getattr(self, "actor", ""), unit_rows=units)
         except Exception as e:
             self.log.add("error", f"Could not write report entry: {type(e).__name__}")
 

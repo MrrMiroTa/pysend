@@ -62,6 +62,10 @@ DB_URL = database_url(BASE)
 engine = make_engine(DB_URL)                  # creates the tables on first start
 accounts = UserStore(engine)                  # admin login users  (database)
 history = History(engine)                     # report             (database)
+try:
+    history.purge(today_local())               # keep only the last 3 months (rolling), also after a restart
+except Exception as _e:
+    print("report cleanup skipped:", type(_e).__name__)
 excel = ExcelManager(os.path.join(data_dir(BASE), "clients_working.xlsx"))  # client list = Excel, loaded with Browse file
 logs = LogBuffer()
 bot = TelegramBot(CFG, excel, logs, history)
@@ -363,7 +367,8 @@ def report_args():
         return status, None, None
     d_to = parse_day(request.args.get("to")) or today_local().isoformat()
     d_from = parse_day(request.args.get("from")) or (date.fromisoformat(d_to) - timedelta(days=6)).isoformat()
-    return status, min(d_from, d_to), max(d_from, d_to)
+    d_from, d_to = min(d_from, d_to), max(d_from, d_to)
+    return status, max(d_from, history.keep_from(today_local())), d_to     # older than 3 months no longer exists
 
 
 @app.get("/api/report")
@@ -371,7 +376,8 @@ def report_args():
 def report():
     status, d_from, d_to = report_args()
     return jsonify(summary=history.summary(d_from, d_to), days=history.days(d_from, d_to),
-                   rows=history.rows(status, d_from, d_to), range=[d_from, d_to])
+                   rows=history.rows(status, d_from, d_to), range=[d_from, d_to],
+                   keep_from=history.keep_from(today_local()))
 
 
 @app.get("/api/report/export")
@@ -380,11 +386,15 @@ def report_export():
     import io
     import pandas as pd
     status, d_from, d_to = report_args()
+    ucols = ("name", "plate", "imei", "expiry", "ts", "status")          # the plate list the person asked for
+    units = pd.DataFrame([{k: safe_cell(r[k]) for k in ucols} for r in history.unit_rows(status, d_from, d_to)], columns=ucols)
+    units.columns = ["name", "plate", "imei", "expiry_date", "date_sent", "status"]
     cols = ("ts", "user", "units", "plates", "status", "reason", "detail", "sent_by")
     detail = pd.DataFrame([{k: safe_cell(r[k]) for k in cols} for r in history.rows(status, d_from, d_to, 100000)], columns=cols)
     by_day = pd.DataFrame(history.days(d_from, d_to), columns=("day", "total", "sent", "failed", "skipped"))
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as w:
+        units.to_excel(w, sheet_name="Plates", index=False)
         by_day.to_excel(w, sheet_name="By day", index=False)
         detail.to_excel(w, sheet_name="Report", index=False)
     buf.seek(0)
