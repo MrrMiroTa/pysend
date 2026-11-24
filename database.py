@@ -6,7 +6,7 @@ import calendar, os, re
 from datetime import date
 
 from sqlalchemy import (Boolean, Column, Integer, LargeBinary, MetaData, String, Table, case, create_engine, delete,
-                        event, func, inspect, insert, select, text, update)
+                        event, func, inspect, insert, or_, select, text, update)
 from sqlalchemy.engine import make_url
 
 from timeutil import now
@@ -49,6 +49,19 @@ send_unit_log = Table(                                          # the Report, on
     Column("imei", String(64)),
     Column("expiry", String(32)),
     Column("status", String(10), index=True),                   # sent / failed / skipped
+)
+
+change_log = Table(                                             # what an admin changed (expiry date, Username/ID, import)
+    "change_log", md,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("ts", String(19), index=True),
+    Column("day", String(10), index=True),
+    Column("actor", String(64)),
+    Column("action", String(12), index=True),                   # expiry / user / import
+    Column("name", String(190)),
+    Column("plate", String(190)),
+    Column("old_value", String(190)),
+    Column("new_value", String(190)),
 )
 
 app_files = Table(                                              # copy of the client list (so it survives a redeploy)
@@ -209,7 +222,38 @@ class History:
         with self.e.begin() as c:
             n = c.execute(delete(send_log).where(send_log.c.day < cut)).rowcount or 0
             n += c.execute(delete(send_unit_log).where(send_unit_log.c.day < cut)).rowcount or 0
+            n += c.execute(delete(change_log).where(change_log.c.day < cut)).rowcount or 0
         return n
+
+    def add_changes(self, ts, actor, rows):
+        """rows: dicts with action, name, plate, old_value, new_value (one per plate changed by the admin)."""
+        if not rows:
+            return
+        with self.e.begin() as c:
+            c.execute(insert(change_log), [dict(
+                ts=ts, day=ts[:10], actor=(actor or "")[:64], action=r["action"], name=(r.get("name") or "")[:190],
+                plate=(r.get("plate") or "")[:190], old_value=(r.get("old_value") or "")[:190],
+                new_value=(r.get("new_value") or "")[:190]) for r in rows])
+        try:
+            self.purge(date.fromisoformat(ts[:10]))
+        except Exception:
+            pass
+
+    def changes(self, action="all", d_from=None, d_to=None, q="", limit=5000):
+        s = select(change_log).order_by(change_log.c.id.desc()).limit(limit)
+        if action in ("expiry", "user", "import"):
+            s = s.where(change_log.c.action == action)
+        if d_from:
+            s = s.where(change_log.c.day >= d_from)
+        if d_to:
+            s = s.where(change_log.c.day <= d_to)
+        q = re.sub(r"[%_\\]", "", (q or "").strip())[:80]
+        if q:
+            like = f"%{q}%"
+            s = s.where(or_(change_log.c.name.ilike(like), change_log.c.plate.ilike(like), change_log.c.actor.ilike(like),
+                            change_log.c.new_value.ilike(like)))
+        with self.e.connect() as c:
+            return [dict(r) for r in c.execute(s).mappings()]
 
     def unit_rows(self, status="all", d_from=None, d_to=None, limit=100000):
         q = select(send_unit_log).order_by(send_unit_log.c.id.desc()).limit(limit)

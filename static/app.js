@@ -92,7 +92,7 @@
       td(tr, u);
       td(tr, el("span", "mono", r.name || "—"), "hide-sm");
       td(tr, el("span", "pill " + (r.type.toLowerCase().startsWith("comp") ? "t-company" : "t-normal"), r.type), "hide-sm");
-      td(tr, r.plate, "plate"); td(tr, el("span", "mono", r.imei), "hide-sm"); td(tr, fmt(r.expiry), "hide-sm");
+      td(tr, r.plate, "plate"); td(tr, el("span", "mono", r.imei), "hide-sm"); const ex = el("div", "", fmt(r.expiry)); if (r.note) ex.append(el("small", "note", r.note)); ex.title = r.note || ""; td(tr, ex, "hide-sm");
       td(tr, r.days === null ? "—" : el("span", "pill d-" + r.state, r.days + " ថ្ងៃ"));
       const [km, en, ic] = STATUS[r.state], b = el("span", "badge b-" + r.state);
       b.append(icon(ic), `${km} (${en})`); td(tr, b);
@@ -305,9 +305,11 @@
     document.querySelectorAll("[data-range]").forEach((b) => b.classList.toggle("on", b.dataset.range === kind));
     if (reload) loadReport();
   }
+  const CHANGE_LABEL = { expiry: "ថ្ងៃផុតកំណត់ (Expiry date)", user: "Username/ID", import: "Import file" };
   const rq = () => {
     const p = new URLSearchParams({ status: document.querySelector("input[name=rf]:checked").value, from: $("#rFrom").value, to: $("#rTo").value });
     if (!$("#rFrom").value && !$("#rTo").value) p.set("all", "1");
+    p.set("ctype", document.querySelector("input[name=cf]:checked").value); p.set("cq", $("#cQ").value.trim());
     return p.toString();
   };
   function pickDay(day) { $("#rFrom").value = $("#rTo").value = day; document.querySelectorAll("[data-range]").forEach((b) => b.classList.remove("on")); loadReport(); }
@@ -358,9 +360,18 @@
         if (r.detail) why.title = r.detail;  // technical detail on hover
         td(tr, r.sent_by || "—", "hide-sm"); body.appendChild(tr);
       }
+      const cb = $("#cRows"); cb.replaceChildren();                       // what the admins changed
+      $("#cEmpty").hidden = d.changes.length > 0; $("#cCount").textContent = d.changes.length.toLocaleString();
+      for (const c of d.changes) {
+        const tr = document.createElement("tr"), isDate = c.action === "expiry";
+        td(tr, c.ts); td(tr, c.actor || "—"); td(tr, CHANGE_LABEL[c.action] || c.action); td(tr, c.name || "—", "hide-sm");
+        td(tr, c.plate || "—"); td(tr, (isDate ? fmt(c.old_value) : c.old_value) || "—", "muted"); td(tr, (isDate ? fmt(c.new_value) : c.new_value) || "—");
+        cb.appendChild(tr);
+      }
     } catch (e) { say("error", e.message); }
   }
-  document.querySelectorAll("input[name=rf]").forEach((e) => e.addEventListener("change", loadReport));
+  document.querySelectorAll("input[name=rf], input[name=cf]").forEach((e) => e.addEventListener("change", loadReport));
+  let cTimer; $("#cQ").addEventListener("input", () => { clearTimeout(cTimer); cTimer = setTimeout(loadReport, 300); });
   $("#rFrom").addEventListener("change", loadReport); $("#rTo").addEventListener("change", loadReport);
   document.querySelectorAll("[data-range]").forEach((b) => b.addEventListener("click", () => setRange(b.dataset.range)));
   $("#rExport").onclick = () => { location.href = "/api/report/export?" + rq(); };

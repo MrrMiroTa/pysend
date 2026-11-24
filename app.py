@@ -45,7 +45,7 @@ if len(os.getenv("SECRET_KEY", "")) < 32:
 from excel_manager import ExcelManager, safe_cell  # noqa: E402
 from database import FileStore, History, UserStore, data_dir, database_url, make_engine  # noqa: E402
 from telegram_bot import CHUNK, LogBuffer, TelegramBot, group_rows  # noqa: E402
-from timeutil import today as today_local  # noqa: E402
+from timeutil import now as now_local, today as today_local  # noqa: E402
 
 app = Flask(__name__)
 if os.getenv("TRUST_PROXY") == "1":  # behind Nginx/Caddy: use the real client IP/scheme
@@ -233,6 +233,17 @@ def index():
                            phone=CFG["CONTACT_PHONE"])
 
 
+CHANGE_LABEL = {"expiry": "Expiry date updated", "user": "Username/ID filled", "import": "File imported"}
+
+
+def log_changes(rows):
+    """Record what an admin changed (shown in the Report). Never blocks the change itself."""
+    try:
+        history.add_changes(now_local().strftime("%Y-%m-%d %H:%M:%S"), g.user["username"], rows)
+    except Exception as e:
+        app.logger.warning("change log failed: %s", e)
+
+
 STATE_RANK = {"expired": 0, "due": 1, "approaching": 2, "safe": 3, "sent": 4, "invalid": 5}
 
 
@@ -371,6 +382,7 @@ def upload():
         app.logger.exception("Upload failed")  # full traceback in the terminal
         return jsonify(error=f"Could not import ({type(e).__name__}): {e}"), 500
     logs.add("info", f"{g.user['username']} imported {n} row(s) from upload.")
+    log_changes([dict(action="import", new_value=f"{f.filename}: {n} rows")])
     n_days, c_days = thresholds()  # the page asks for the new list in this same response (no second request needed)
     return jsonify(rows=n, file=excel.source_name, warnings=excel.last_warnings,
                    data=build_data(n_days, c_days, "all", "", 1, request.args.get("size")))
@@ -396,9 +408,11 @@ def update_expiry():
     if bot.running:
         return jsonify(error="Wait for the running batch to finish."), 409
     try:
-        n = excel.update_expiry(ids, day)
+        changes = excel.update_expiry(ids, day, g.user["username"])
     except Exception as e:
         return jsonify(error=f"Could not save ({type(e).__name__}): {e}"), 500
+    n = len(changes)
+    log_changes([dict(action="expiry", **c) for c in changes])
     logs.add("info", f"{g.user['username']} set a new expiry date {day} on {n} plate(s).")
     return jsonify(updated=n, expiry_date=day)
 
@@ -411,13 +425,15 @@ def set_user():
     if bot.running:
         return jsonify(error="Wait for the running batch to finish."), 409
     try:
-        n = excel.set_user(p.get("name"), p.get("user"))
+        changes = excel.set_user(p.get("name"), p.get("user"))
     except ValueError as e:
         return jsonify(error=str(e)), 400
     except Exception as e:
         return jsonify(error=f"Could not save ({type(e).__name__}): {e}"), 500
+    n = len(changes)
     if not n:
         return jsonify(error=f"No plate has the Name '{str(p.get('name') or '').strip()}'."), 404
+    log_changes([dict(action="user", **c) for c in changes])
     logs.add("info", f"{g.user['username']} set Username/ID on {n} plate(s) named {str(p.get('name')).strip()}.")
     return jsonify(updated=n)
 
@@ -464,7 +480,8 @@ def report():
     status, d_from, d_to = report_args()
     return jsonify(summary=history.summary(d_from, d_to), days=history.days(d_from, d_to),
                    rows=history.rows(status, d_from, d_to), range=[d_from, d_to],
-                   keep_from=history.keep_from(today_local()))
+                   keep_from=history.keep_from(today_local()),
+                   changes=history.changes(request.args.get("ctype", "all"), d_from, d_to, request.args.get("cq", "")))
 
 
 @app.get("/api/report/export")
@@ -476,12 +493,18 @@ def report_export():
     ucols = ("name", "plate", "imei", "expiry", "ts", "status")          # the plate list the person asked for
     units = pd.DataFrame([{k: safe_cell(r[k]) for k in ucols} for r in history.unit_rows(status, d_from, d_to)], columns=ucols)
     units.columns = ["name", "plate", "imei", "expiry_date", "date_sent", "status"]
+    chg = pd.DataFrame([{"date_time": safe_cell(r["ts"]), "admin": safe_cell(r["actor"]), "action": CHANGE_LABEL.get(r["action"], r["action"]),
+                         "name": safe_cell(r["name"]), "plate": safe_cell(r["plate"]), "old": safe_cell(r["old_value"]),
+                         "new": safe_cell(r["new_value"])}
+                        for r in history.changes(request.args.get("ctype", "all"), d_from, d_to, request.args.get("cq", ""), 100000)],
+                       columns=("date_time", "admin", "action", "name", "plate", "old", "new"))
     cols = ("ts", "user", "units", "plates", "status", "reason", "detail", "sent_by")
     detail = pd.DataFrame([{k: safe_cell(r[k]) for k in cols} for r in history.rows(status, d_from, d_to, 100000)], columns=cols)
     by_day = pd.DataFrame(history.days(d_from, d_to), columns=("day", "total", "sent", "failed", "skipped"))
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as w:
         units.to_excel(w, sheet_name="Plates", index=False)
+        chg.to_excel(w, sheet_name="Changes", index=False)
         by_day.to_excel(w, sheet_name="By day", index=False)
         detail.to_excel(w, sheet_name="Report", index=False)
     buf.seek(0)

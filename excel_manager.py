@@ -6,8 +6,8 @@ import pandas as pd
 from timeutil import now as now_local, today as today_local
 
 COLUMNS = ["type", "plate", "imei", "expiry_date", "status", "sent_at"]            # required
-OPTIONAL = ["user", "name"]      # user = Telegram Username/ID (the admin can fill it later); name = e.g. WL112
-ALL_COLS = ["user", "type", "plate", "imei", "expiry_date", "status", "sent_at", "name"]
+OPTIONAL = ["user", "name", "note"]   # user = Telegram Username/ID (filled later); name = e.g. WL112; note = renewal note
+ALL_COLS = ["user", "type", "plate", "imei", "expiry_date", "status", "sent_at", "name", "note"]
 # Header names we accept (compared lower-case, ignoring spaces / _ / - / "/"). Khmer headers too.
 SYNONYMS = {
     "user": "user userid username userorid useridorusername telegram telegramid telegramuser telegramusername chatid client clientid contact",
@@ -17,6 +17,7 @@ SYNONYMS = {
     "expiry_date": "expirydate expirationdate expiry expire expiredate expiration expdate enddate duedate ថ្ងៃផុតកំណត់",
     "status": "status", "sent_at": "sentat",
     "name": "name devicename unitname vehiclename trackername gpsname ឈ្មោះ",
+    "note": "note renewalnote",
 }
 SYN = {k: canon for canon, words in SYNONYMS.items() for k in words.split()}
 
@@ -231,10 +232,11 @@ class ExcelManager:
             state = np.select([sent, np.isnan(d), d < 0, d <= thr, d <= np.maximum(SOON, thr)],
                               ["sent", "invalid", "expired", "due", "approaching"], default="safe")
             names = df["name"] if "name" in df.columns else [""] * len(df)  # working file saved before "name" existed
+            notes = df["note"] if "note" in df.columns else [""] * len(df)
             out = [dict(id=i, user=u, name=nm, type=t or "Normal", plate=p, imei=m, expiry=e,
-                        days=(None if x != x else int(x)), state=s, sent_at=a)
-                   for i, u, nm, t, p, m, e, x, s, a in zip(range(len(df)), df["user"], names, df["type"], df["plate"], df["imei"],
-                                                            df["expiry_date"], d.tolist(), state.tolist(), df["sent_at"])]
+                        days=(None if x != x else int(x)), state=s, sent_at=a, note=no)
+                   for i, u, nm, no, t, p, m, e, x, s, a in zip(range(len(df)), df["user"], names, notes, df["type"], df["plate"], df["imei"],
+                                                                df["expiry_date"], d.tolist(), state.tolist(), df["sent_at"])]
             self._cache = {key: out}
             return out
 
@@ -252,12 +254,24 @@ class ExcelManager:
     def version(self):
         return self._version
 
-    def update_expiry(self, ids, iso_date):
-        """The customer renewed: set the new expiry date and clear 'Sent', so the plate shows up again
-        (Approaching / Due) when the new date gets close."""
+    @staticmethod
+    def dmy(iso):
+        try:
+            return date.fromisoformat(str(iso)[:10]).strftime("%d-%m-%Y")
+        except ValueError:
+            return str(iso or "")
+
+    def update_expiry(self, ids, iso_date, actor=""):
+        """The customer renewed: set the new expiry date, write a note with the day it was updated, and clear 'Sent',
+        so the plate shows up again (Approaching / Due) when the new date gets close. Returns what changed."""
+        changes, stamp = [], now_local().strftime("%d-%m-%Y")
         with self.lock:
             df = self._load()
             ok = sorted({int(i) for i in ids if 0 <= int(i) < len(df)})
+            for i in ok:
+                old = str(df.at[i, "expiry_date"])
+                changes.append(dict(name=df.at[i, "name"], plate=df.at[i, "plate"], old_value=old, new_value=iso_date))
+                df.at[i, "note"] = f"Updated {stamp} · was {self.dmy(old)}" + (f" · by {actor}" if actor else "")
             if ok:
                 df.loc[ok, "expiry_date"] = iso_date
                 df.loc[ok, "status"] = ""
@@ -265,7 +279,7 @@ class ExcelManager:
                 self._changed()
         if ok:
             self.flush(raise_errors=True)          # also copies it to the database right away
-        return len(ok)
+        return changes
 
     @staticmethod
     def clean_user(v):
@@ -283,13 +297,13 @@ class ExcelManager:
         with self.lock:
             df = self._load()
             m = df["name"].str.strip().str.lower() == key
-            n = int(m.sum())
-            if n:
+            changes = [dict(name=r["name"], plate=r["plate"], old_value=r["user"], new_value=user) for _, r in df[m].iterrows()]
+            if changes:
                 df.loc[m, "user"] = user
                 self._changed()
-        if n:
+        if changes:
             self.flush(raise_errors=True)
-        return n
+        return changes
 
     def names(self, limit=5000):
         """[(name, plates, plates_with_user)] for the Fill Username/ID box."""
@@ -338,8 +352,8 @@ class ExcelManager:
     @staticmethod
     def template():
         nxt = (today_local() + timedelta(days=10)).isoformat()
-        df = pd.DataFrame([["@username", "Normal", "ភ្នំពេញ 2A-1234", "862012345678901", nxt, "", "", "WL112"],
-                           ["123456789", "Company", "សៀមរាប 1C-4321", "862012345678902", nxt, "", "", "WL113"]], columns=ALL_COLS)
+        df = pd.DataFrame([["@username", "Normal", "ភ្នំពេញ 2A-1234", "862012345678901", nxt, "", "", "WL112", ""],
+                           ["123456789", "Company", "សៀមរាប 1C-4321", "862012345678902", nxt, "", "", "WL113", ""]], columns=ALL_COLS)
         buf = io.BytesIO()
         df.to_excel(buf, index=False, engine="openpyxl")
         buf.seek(0)
