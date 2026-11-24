@@ -5,9 +5,9 @@ import numpy as np
 import pandas as pd
 from timeutil import now as now_local, today as today_local
 
-COLUMNS = ["user", "type", "plate", "imei", "expiry_date", "status", "sent_at"]   # required
-OPTIONAL = ["name"]                                                                 # e.g. WL112; may be missing
-ALL_COLS = COLUMNS + OPTIONAL
+COLUMNS = ["type", "plate", "imei", "expiry_date", "status", "sent_at"]            # required
+OPTIONAL = ["user", "name"]      # user = Telegram Username/ID (the admin can fill it later); name = e.g. WL112
+ALL_COLS = ["user", "type", "plate", "imei", "expiry_date", "status", "sent_at", "name"]
 # Header names we accept (compared lower-case, ignoring spaces / _ / - / "/"). Khmer headers too.
 SYNONYMS = {
     "user": "user userid username userorid useridorusername telegram telegramid telegramuser telegramusername chatid client clientid contact",
@@ -27,8 +27,8 @@ SOON = 15  # days: above this a unit is "safe" (green)
 
 
 def _read(path):
-    """Read the FIRST sheet (header in row 1). The 7 required columns + the optional "name" column are kept;
-    every other column (notes, etc.) is ignored. If any of the 7 is missing the whole file is rejected."""
+    """Read the FIRST sheet (header in row 1). The required columns + the optional "user" and "name" columns are
+    kept; every other column (notes, etc.) is ignored. If a required column is missing the whole file is rejected."""
     if path.lower().endswith(".csv"):
         df = pd.read_csv(path, dtype=str, encoding="utf-8-sig").fillna("")  # utf-8-sig: Excel-saved CSV with Khmer
     else:
@@ -36,7 +36,7 @@ def _read(path):
     found = [str(c).strip() for c in df.columns]
     keys = [_key(c) for c in found]
     picked = {}                                    # required column -> position in the file
-    for canon in COLUMNS:                          # 1st: exact names (user, type, plate, imei, expiry_date, status, sent_at)
+    for canon in COLUMNS + ["user"]:               # 1st: exact names (type, plate, imei, expiry_date, status, sent_at, user)
         if _key(canon) in keys:
             picked[canon] = keys.index(_key(canon))
     for pos, k in enumerate(keys):                 # 2nd: friendly alternative names, only for what is still missing
@@ -55,10 +55,10 @@ def _read(path):
     missing = [c for c in COLUMNS if c not in picked]
     if missing:
         raise ValueError(
-            f"Missing column(s): {', '.join(missing)}. The file must contain ALL 7 columns: {', '.join(COLUMNS)} "
-            f"(other columns are ignored). Columns found: {', '.join(found[:15]) or 'none'}. "
+            f"Missing column(s): {', '.join(missing)}. The file must contain: {', '.join(COLUMNS)} "
+            f"(optional: user, name; other columns are ignored). Columns found: {', '.join(found[:15]) or 'none'}. "
             "Use the template button to get a correct file. "
-            "ឯកសារត្រូវមាន column ទាំង 7 គ្រប់គ្រាន់ ទើប import បាន (column ផ្សេងៗត្រូវបានរំលង)។")
+            "ឯកសារត្រូវមាន column ដែលចាំបាច់ ទើប import បាន (user និង name អាចទុកចោលបាន)។")
     have = [c for c in ALL_COLS if c in picked]
     df = df.iloc[:, [picked[c] for c in have]].copy()      # keep ONLY the known columns, in this order
     df.columns = have
@@ -81,7 +81,7 @@ def _read(path):
     df["type"] = df["type"].replace("", "Normal")
     df["status"] = df["status"].map(lambda v: "Sent" if v.lower() == "sent" else "")
     warns = []
-    for label, mask in (("have no user", df["user"] == ""), ("have no valid expiry date", df["expiry_date"] == "")):
+    for label, mask in (("have no valid expiry date", df["expiry_date"] == ""),):   # no Username/ID is allowed: the admin fills it in
         idx = [rows_xl[k] for k in mask[mask].index]
         if idx:
             warns.append(f"{len(idx)} row(s) {label} (Excel rows {', '.join(map(str, idx[:8]))}{'…' if len(idx) > 8 else ''})")
@@ -103,8 +103,11 @@ class ExcelManager:
        * the computed list is cached until something changes."""
     FLUSH_DELAY = 3.0
 
-    def __init__(self, path):
+    STORE_KEY = "clients_working"
+
+    def __init__(self, path, store=None):
         self.path = path
+        self.store = store          # optional FileStore: a copy of the file lives in the database
         self.lock = threading.RLock()
         self._save_lock = threading.Lock()
         self._name_file = os.path.join(os.path.dirname(os.path.abspath(path)), "source_name.txt")
@@ -139,8 +142,35 @@ class ExcelManager:
                     raise PermissionError(f"Cannot write {path}. Close it in Excel / check folder permissions.")
                 time.sleep(1)
 
+    def _push_to_store(self):
+        if self.store is None or not os.path.exists(self.path):
+            return
+        with open(self.path, "rb") as f:
+            self.store.save(self.STORE_KEY, f.read(), self.source_name)
+
+    def restore_if_missing(self):
+        """Fresh container (redeploy / restart on a host without disk): bring the client list back from the database."""
+        if self.store is None or os.path.exists(self.path):
+            return False
+        try:
+            row = self.store.load(self.STORE_KEY)
+        except Exception as e:
+            self.save_error = f"Could not read the saved client list from the database ({type(e).__name__})"
+            return False
+        if not row:
+            return False
+        data, name = row
+        os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
+        with open(self.path, "wb") as f:
+            f.write(data)
+        if name:
+            with open(self._name_file, "w", encoding="utf-8") as f:
+                f.write(name)
+        return True
+
     def _load(self):  # lock held
         if self._df is None:
+            self.restore_if_missing()
             self._df = _read(self.path) if os.path.exists(self.path) else pd.DataFrame(columns=ALL_COLS)
         return self._df
 
@@ -165,6 +195,7 @@ class ExcelManager:
         try:
             with self._save_lock:
                 self._save(snap)
+                self._push_to_store()                       # database copy; on error it is retried like the file
             self.save_error = ""
         except Exception as e:
             self.save_error = f"{type(e).__name__}: {e}"
@@ -216,6 +247,59 @@ class ExcelManager:
                 df.loc[ok, "status"] = "Sent"
                 df.loc[ok, "sent_at"] = now_local().strftime("%Y-%m-%d %H:%M")
                 self._changed()
+
+    @property
+    def version(self):
+        return self._version
+
+    def update_expiry(self, ids, iso_date):
+        """The customer renewed: set the new expiry date and clear 'Sent', so the plate shows up again
+        (Approaching / Due) when the new date gets close."""
+        with self.lock:
+            df = self._load()
+            ok = sorted({int(i) for i in ids if 0 <= int(i) < len(df)})
+            if ok:
+                df.loc[ok, "expiry_date"] = iso_date
+                df.loc[ok, "status"] = ""
+                df.loc[ok, "sent_at"] = ""
+                self._changed()
+        if ok:
+            self.flush(raise_errors=True)          # also copies it to the database right away
+        return len(ok)
+
+    @staticmethod
+    def clean_user(v):
+        """@username, username, t.me/username or a numeric Telegram ID -> the form the bot sends to."""
+        s = re.sub(r"^(https?://)?(www\.)?t\.me/", "@", str(v or "").strip())
+        if re.fullmatch(r"-?\d{5,15}", s) or re.fullmatch(r"@?[A-Za-z][A-Za-z0-9_]{4,31}", s):
+            return s
+        raise ValueError("Username/ID is not valid. Use @username (5-32 letters, digits, _) or a numeric Telegram ID.")
+
+    def set_user(self, name, user):
+        """Apply one Username/ID to EVERY plate that has this Name (e.g. WL012 with 10 plates)."""
+        key, user = str(name or "").strip().lower(), self.clean_user(user)
+        if not key:
+            raise ValueError("Name is empty.")
+        with self.lock:
+            df = self._load()
+            m = df["name"].str.strip().str.lower() == key
+            n = int(m.sum())
+            if n:
+                df.loc[m, "user"] = user
+                self._changed()
+        if n:
+            self.flush(raise_errors=True)
+        return n
+
+    def names(self, limit=5000):
+        """[(name, plates, plates_with_user)] for the Fill Username/ID box."""
+        with self.lock:
+            df = self._load()
+            d = df[df["name"].str.strip() != ""]
+            if d.empty:
+                return []
+            g = d.assign(has=(d["user"].str.strip() != "")).groupby("name").agg(plates=("plate", "size"), with_user=("has", "sum"))
+            return [dict(name=n, plates=int(r.plates), with_user=int(r.with_user)) for n, r in g.iterrows()][:limit]
 
     def replace_from_upload(self, file_storage):
         """Validate an uploaded workbook fully before it replaces the current list."""

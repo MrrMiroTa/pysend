@@ -5,7 +5,7 @@ SQLite by default (zero setup). MySQL/MariaDB/PostgreSQL via DATABASE_URL."""
 import calendar, os, re
 from datetime import date
 
-from sqlalchemy import (Boolean, Column, Integer, MetaData, String, Table, case, create_engine, delete,
+from sqlalchemy import (Boolean, Column, Integer, LargeBinary, MetaData, String, Table, case, create_engine, delete,
                         event, func, inspect, insert, select, text, update)
 from sqlalchemy.engine import make_url
 
@@ -49,6 +49,14 @@ send_unit_log = Table(                                          # the Report, on
     Column("imei", String(64)),
     Column("expiry", String(32)),
     Column("status", String(10), index=True),                   # sent / failed / skipped
+)
+
+app_files = Table(                                              # copy of the client list (so it survives a redeploy)
+    "app_files", md,
+    Column("name", String(64), primary_key=True),
+    Column("data", LargeBinary(16_000_000)),                    # MEDIUMBLOB on MySQL, BYTEA on PostgreSQL
+    Column("source_name", String(120)),
+    Column("updated", String(19)),
 )
 
 RETENTION_MONTHS = 3                                            # the Report keeps only the last 3 months
@@ -151,6 +159,24 @@ class UserStore:
     def delete(self, uid):
         with self.e.begin() as c:
             c.execute(delete(users).where(users.c.id == uid))
+
+
+class FileStore:
+    """Keeps small files (the client list .xlsx, a few hundred KB) in the database, one row per name."""
+
+    def __init__(self, engine):
+        self.e = engine
+
+    def save(self, name, data, source_name=""):
+        with self.e.begin() as c:                                # delete + insert = works on SQLite/MySQL/PostgreSQL
+            c.execute(delete(app_files).where(app_files.c.name == name))
+            c.execute(insert(app_files).values(name=name, data=data, source_name=(source_name or "")[:120], updated=_stamp()))
+
+    def load(self, name):
+        """-> (bytes, source_name) or None."""
+        with self.e.connect() as c:
+            r = c.execute(select(app_files.c.data, app_files.c.source_name).where(app_files.c.name == name)).first()
+        return (bytes(r[0]), r[1] or "") if r and r[0] else None
 
 
 class History:
