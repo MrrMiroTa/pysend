@@ -187,7 +187,8 @@ def in_filter(r, f, n, c):
     live = r["state"] != "sent" and d is not None
     return {"all": True,
             "due_normal": live and 0 <= d <= n, "due_company": live and 0 <= d <= c,
-            "expired": r["state"] == "expired", "sent": r["state"] == "sent"}.get(f, True)
+            "expired": r["state"] == "expired", "sent": r["state"] == "sent",
+            "no_user": not (r["user"] or "").strip()}.get(f, True)
 
 
 def matches(r, q):
@@ -232,12 +233,33 @@ def index():
                            phone=CFG["CONTACT_PHONE"])
 
 
-def build_data(n, c, flt, q, page_arg, size_arg):
+STATE_RANK = {"expired": 0, "due": 1, "approaching": 2, "safe": 3, "sent": 4, "invalid": 5}
+
+
+def natural(s):
+    """WL2 before WL10: text and numbers compared the way a person reads them."""
+    return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", s or "")]
+
+
+SORT_KEYS = {
+    "user": lambda r: (not r["user"], natural(r["user"])),
+    "name": lambda r: (not r.get("name"), natural(r.get("name"))),
+    "type": lambda r: natural(r["type"]),
+    "plate": lambda r: natural(r["plate"]),
+    "imei": lambda r: natural(r["imei"]),
+    "expiry": lambda r: (not r["expiry"], r["expiry"]),
+    "days": lambda r: (r["days"] is None, r["days"] or 0),
+    "state": lambda r: STATE_RANK.get(r["state"], 9),
+}
+
+
+def build_data(n, c, flt, q, page_arg, size_arg, sort=None, direction="asc"):
     """One page of the client list + stats. Used by /api/data and returned by /api/upload."""
     rows = excel.records(n, c)
     cnt = Counter(r["state"] for r in rows)
     stats = {k: cnt.get(k, 0) for k in ("due", "approaching", "expired", "safe", "sent")}
-    stats.update(units=len(rows), users=len({r["user"] for r in rows}), due_normal=0, due_company=0, due_resend=0)
+    stats.update(units=len(rows), users=len({r["user"] for r in rows if r["user"]}), no_user=sum(1 for r in rows if not r["user"]),
+                 due_normal=0, due_company=0, due_resend=0)
     for r in rows:  # one pass over all units
         d = r["days"]
         if d is None:
@@ -249,6 +271,8 @@ def build_data(n, c, flt, q, page_arg, size_arg):
             stats["due_resend"] += 1
     q = (q or "").strip().lower()[:80]
     shown = [r for r in rows if in_filter(r, flt, n, c) and matches(r, q)]
+    if sort in SORT_KEYS:
+        shown = sorted(shown, key=SORT_KEYS[sort], reverse=(direction == "desc"))
     size = clamp(size_arg, 10, 500, 100)
     pages = max(1, -(-len(shown) // size))
     page = clamp(page_arg, 1, pages, 1)  # paging keeps the browser fast with 10,000+ units
@@ -262,7 +286,8 @@ def data():
     n, c = thresholds()
     try:
         return jsonify(build_data(n, c, request.args.get("filter", "all"), request.args.get("q", ""),
-                                  request.args.get("page"), request.args.get("size")))
+                                  request.args.get("page"), request.args.get("size"),
+                                  request.args.get("sort"), request.args.get("dir", "asc")))
     except Exception as e:
         return jsonify(error=f"Cannot read Excel: {e}"), 400
 
@@ -283,7 +308,10 @@ def preview():
     rows = pick_rows(p, *thresholds())
     if not rows:
         return jsonify(error="No matching rows to preview."), 400
-    units = group_rows(rows)[0]
+    groups = group_rows(rows)
+    if not groups:
+        return jsonify(error="These units have no Username/ID yet. Use 'Fill Username/ID' first."), 400
+    units = groups[0]
     text, image = bot.preview(units, str(p.get("template", ""))[:2000], clean_phone(p.get("phone")))
     return jsonify(user=units[0]["user"], units=len(units), images=-(-len(units) // CHUNK), text=text, image=image)
 
@@ -300,10 +328,17 @@ def send():
         return jsonify(error="Nothing to send. These units are already marked Sent - turn on Force resend to send again."
                        if p.get("mode") == "selected" else "No clients are due. Turn on Force resend to include units already sent."), 400
     limit = clamp(p.get("limit"), 1, CFG["MAX_PER_RUN"], CFG["MAX_PER_RUN"])  # env value is a hard cap
+    missing = [r for r in rows if not (r["user"] or "").strip()]      # plates without a Username/ID cannot be sent
+    names = sorted({r.get("name") or r["plate"] for r in missing})
+    shown = ", ".join(names[:8]) + ("…" if len(names) > 8 else "")
     groups = group_rows(rows)  # one message per client
+    if not groups:
+        return jsonify(error=f"Cannot send: {len(missing)} plate(s) have no Username/ID ({shown}). Use 'Fill Username/ID' first."), 400
     if not bot.start(groups, tpl, limit, g.user["username"], clean_phone(p.get("phone"))):
         return jsonify(error="A batch is already running."), 409
-    return jsonify(started=min(len(groups), limit))
+    if missing:
+        logs.add("warn", f"Skipped {len(missing)} plate(s) without Username/ID: {shown}")
+    return jsonify(started=min(len(groups), limit), skipped=len(missing), skipped_names=shown)
 
 
 @app.post("/api/stop")
@@ -317,7 +352,7 @@ def stop():
 @login_required
 def status():
     since = clamp(request.args.get("since"), 0, 10**9, 0)
-    return jsonify(running=bot.running, progress=bot.progress, logs=logs.since(since))
+    return jsonify(running=bot.running, progress=bot.progress, logs=logs.since(since), data_version=excel.version)
 
 
 @app.post("/api/upload")
@@ -339,6 +374,52 @@ def upload():
     n_days, c_days = thresholds()  # the page asks for the new list in this same response (no second request needed)
     return jsonify(rows=n, file=excel.source_name, warnings=excel.last_warnings,
                    data=build_data(n_days, c_days, "all", "", 1, request.args.get("size")))
+
+
+@app.get("/api/names")
+@login_required
+def names():
+    return jsonify(names=excel.names())
+
+
+@app.post("/api/update_expiry")
+@login_required
+def update_expiry():
+    """The customer renewed the service: new expiry date for the selected plates (Sent is cleared)."""
+    p = request.get_json(silent=True) or {}
+    day = parse_day(p.get("expiry_date"))
+    if not day:
+        return jsonify(error="Choose a valid expiry date."), 400
+    ids = [int(i) for i in p.get("ids", []) if str(i).isdigit()]
+    if not ids:
+        return jsonify(error="Select at least one plate first."), 400
+    if bot.running:
+        return jsonify(error="Wait for the running batch to finish."), 409
+    try:
+        n = excel.update_expiry(ids, day)
+    except Exception as e:
+        return jsonify(error=f"Could not save ({type(e).__name__}): {e}"), 500
+    logs.add("info", f"{g.user['username']} set a new expiry date {day} on {n} plate(s).")
+    return jsonify(updated=n, expiry_date=day)
+
+
+@app.post("/api/set_user")
+@login_required
+def set_user():
+    """Apply one Username/ID to every plate with this Name."""
+    p = request.get_json(silent=True) or {}
+    if bot.running:
+        return jsonify(error="Wait for the running batch to finish."), 409
+    try:
+        n = excel.set_user(p.get("name"), p.get("user"))
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    except Exception as e:
+        return jsonify(error=f"Could not save ({type(e).__name__}): {e}"), 500
+    if not n:
+        return jsonify(error=f"No plate has the Name '{str(p.get('name') or '').strip()}'."), 404
+    logs.add("info", f"{g.user['username']} set Username/ID on {n} plate(s) named {str(p.get('name')).strip()}.")
+    return jsonify(updated=n)
 
 
 @app.get("/api/template")

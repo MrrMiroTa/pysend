@@ -8,6 +8,7 @@
     sent: ["បានផ្ញើ", "Sent", "i-send"], invalid: ["កាលបរិច្ឆេទមិនត្រឹមត្រូវ", "Invalid", "i-circle-alert"] };
   const TITLES = { main: ["ផ្ទាំងគ្រប់គ្រង", "Manage and notify upcoming tracking expirations"],
     report: ["របាយការណ៍", "Daily send results, successes and failures"], users: ["អ្នកប្រើប្រាស់", "Admin accounts that can sign in"] };
+  let sortKey = "", sortDir = "asc", dataVersion = null;
   let all = [], selected = new Set(), lastLog = 0, wasRunning = false, stats = {}, page = 1, total = 0, pages = 1, firstLoad = true;
 
   $("#phone").value = localStorage.getItem("phone") || $("#phone").value;   // remembered in this browser
@@ -16,7 +17,7 @@
   $("#tpl").addEventListener("input", () => localStorage.setItem("tpl2", $("#tpl").value));
 
   const qs = () => new URLSearchParams({ normal: $("#normal").value, company: $("#company").value,
-    filter: document.querySelector("input[name=f]:checked").value, q: $("#q").value.trim() }).toString();
+    filter: document.querySelector("input[name=f]:checked").value, q: $("#q").value.trim(), sort: sortKey, dir: sortDir }).toString();
 
   async function api(url, opt = {}) {
     const headers = { "X-CSRF-Token": csrf };
@@ -83,10 +84,12 @@
     for (const r of rows) {
       const tr = document.createElement("tr"); if (selected.has(r.id)) tr.className = "sel";
       const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = selected.has(r.id);
-      cb.setAttribute("aria-label", "Select " + r.user);
+      cb.setAttribute("aria-label", "Select " + (r.user || r.plate));
       cb.addEventListener("change", () => { cb.checked ? selected.add(r.id) : selected.delete(r.id); tr.classList.toggle("sel", cb.checked); info(); });
       td(tr, cb, "ck");
-      const u = el("div", "cell-user"); u.append(avatar(r.user), el("span", "", r.user)); td(tr, u);
+      const u = el("div", "cell-user");
+      if (r.user) u.append(avatar(r.user), el("span", "", r.user)); else u.append(el("span", "pill noid", "គ្មាន ID · No ID"));
+      td(tr, u);
       td(tr, el("span", "mono", r.name || "—"), "hide-sm");
       td(tr, el("span", "pill " + (r.type.toLowerCase().startsWith("comp") ? "t-company" : "t-normal"), r.type), "hide-sm");
       td(tr, r.plate, "plate"); td(tr, el("span", "mono", r.imei), "hide-sm"); td(tr, fmt(r.expiry), "hide-sm");
@@ -120,6 +123,7 @@
     setNum("#sUnits", s.units); $("#sUsers").textContent = s.users.toLocaleString();
     setNum("#sNormal", s.due_normal); setNum("#sCompany", s.due_company); setNum("#sSent", s.sent); $("#sExpired").textContent = s.expired.toLocaleString();
     drawDonut(s);
+    $("#noIdCount").textContent = s.no_user ? s.no_user.toLocaleString() : "";
   }
 
   function applyData(d) {
@@ -136,6 +140,10 @@
   async function poll() {
     try {
       const s = await api("/api/status?since=" + lastLog);
+      if (s.data_version !== undefined) {                                    // the list changed on the server -> refresh the table
+        const changed = dataVersion !== null && s.data_version !== dataVersion; dataVersion = s.data_version;
+        if (changed && !s.running && tab === "main") load();
+      }
       s.logs.forEach((l) => { addLog(l); lastLog = l.id; });
       $("#stop").disabled = !s.running; $("#sendDue").disabled = $("#sendSel").disabled = s.running;
       $("#dot").classList.toggle("busy", s.running);
@@ -168,6 +176,7 @@
       const r = await post("/api/send", { mode, ids, template: $("#tpl").value, limit: $("#limit").value, force, phone: $("#phone").value.trim() });
       $("#force").checked = false;  // safety: force mode switches itself off after each send
       say("info", `Started: ${r.started} client message(s) queued.` + (force ? " (force resend)" : ""));
+      if (r.skipped) say("warn", `${r.skipped} plate(s) skipped, no Username/ID: ${r.skipped_names}. Use "Fill Username/ID".`);
     } catch (e) { say("error", e.message); }
   }
 
@@ -217,6 +226,57 @@
   $("#selAll").onclick = async () => {
     try { const d = await api("/api/ids?" + qs()); d.ids.forEach((i) => selected.add(i)); render(); say("ok", `${selected.size.toLocaleString()} units selected.`); }
     catch (e) { say("error", e.message); }
+  };
+
+  // ---------- sort by column ----------
+  function paintSort() {
+    document.querySelectorAll("th[data-sort]").forEach((h) => { h.classList.toggle("asc", h.dataset.sort === sortKey && sortDir === "asc");
+      h.classList.toggle("desc", h.dataset.sort === sortKey && sortDir === "desc"); });
+  }
+  document.querySelectorAll("th[data-sort]").forEach((h) => h.addEventListener("click", () => {
+    if (sortKey === h.dataset.sort) { if (sortDir === "asc") sortDir = "desc"; else { sortKey = ""; sortDir = "asc"; } }
+    else { sortKey = h.dataset.sort; sortDir = "asc"; }
+    page = 1; paintSort(); load();
+  }));
+
+  // ---------- admin tools: new expiry date / fill Username-ID ----------
+  const showErr = (id, msg) => { const e = $(id); e.textContent = msg || ""; e.hidden = !msg; };
+  $("#btnExp").onclick = () => {
+    if (!selected.size) return say("warn", "Select plates first (search a Name such as WL012, then 'Select all matching').");
+    $("#expInfo").textContent = `${selected.size.toLocaleString()} plate(s) selected.`; $("#expDate").value = ""; showErr("#expErr"); $("#expDlg").showModal();
+  };
+  $("#expCancel").onclick = () => $("#expDlg").close();
+  $("#expSave").onclick = async () => {
+    if (!$("#expDate").value) return showErr("#expErr", "Choose the new expiry date.");
+    try {
+      const r = await api("/api/update_expiry", { method: "POST", body: JSON.stringify({ ids: [...selected], expiry_date: $("#expDate").value }) });
+      $("#expDlg").close(); selected.clear(); say("ok", `New expiry date ${fmt($("#expDate").value)} saved on ${r.updated.toLocaleString()} plate(s).`); load();
+    } catch (e) { showErr("#expErr", e.message); }
+  };
+  let nameMap = {};
+  $("#btnFill").onclick = async () => {
+    $("#fillName").value = $("#q").value.trim(); $("#fillUser").value = ""; showErr("#fillErr"); $("#fillInfo").textContent = "Type a Name. Every plate with this Name gets the Username/ID.";
+    try {
+      const d = await api("/api/names"); nameMap = {};
+      $("#nameList").replaceChildren(...d.names.map((n) => { nameMap[n.name.toLowerCase()] = n; const o = document.createElement("option"); o.value = n.name; o.label = `${n.plates} plate(s)`; return o; }));
+    } catch (e) { /* the list is only a help */ }
+    fillHint(); $("#fillDlg").showModal();
+  };
+  function fillHint() {
+    const n = nameMap[$("#fillName").value.trim().toLowerCase()];
+    if (n) $("#fillInfo").textContent = `${n.plates} plate(s) have this Name, ${n.with_user} already have a Username/ID.`;
+  }
+  $("#fillName").addEventListener("input", fillHint);
+  $("#fillCancel").onclick = () => $("#fillDlg").close();
+  $("#fillSave").onclick = async () => {
+    const name = $("#fillName").value.trim(), user = $("#fillUser").value.trim();
+    if (!name || !user) return showErr("#fillErr", "Enter the Name and the Username/ID.");
+    const n = nameMap[name.toLowerCase()];
+    if (n && n.with_user && !confirm(`${n.with_user} of ${n.plates} plate(s) named ${name} already have a Username/ID. Replace all with ${user}?`)) return;
+    try {
+      const r = await api("/api/set_user", { method: "POST", body: JSON.stringify({ name, user }) });
+      $("#fillDlg").close(); say("ok", `Username/ID ${user} applied to ${r.updated.toLocaleString()} plate(s) named ${name}.`); load();
+    } catch (e) { showErr("#fillErr", e.message); }
   };
 
   // ---------- tabs ----------

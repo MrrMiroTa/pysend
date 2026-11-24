@@ -33,6 +33,8 @@ def group_rows(rows):
     """Group units by client so each client gets ONE message listing all their units."""
     groups = {}
     for r in rows:
+        if not (r["user"] or "").strip():
+            continue                                    # no Username/ID: cannot be sent (the page reports it)
         groups.setdefault(r["user"], []).append(r)
     return list(groups.values())
 
