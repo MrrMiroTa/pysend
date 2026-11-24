@@ -103,8 +103,11 @@ class ExcelManager:
        * the computed list is cached until something changes."""
     FLUSH_DELAY = 3.0
 
-    def __init__(self, path):
+    STORE_KEY = "clients_working"
+
+    def __init__(self, path, store=None):
         self.path = path
+        self.store = store          # optional FileStore: a copy of the file lives in the database
         self.lock = threading.RLock()
         self._save_lock = threading.Lock()
         self._name_file = os.path.join(os.path.dirname(os.path.abspath(path)), "source_name.txt")
@@ -139,8 +142,35 @@ class ExcelManager:
                     raise PermissionError(f"Cannot write {path}. Close it in Excel / check folder permissions.")
                 time.sleep(1)
 
+    def _push_to_store(self):
+        if self.store is None or not os.path.exists(self.path):
+            return
+        with open(self.path, "rb") as f:
+            self.store.save(self.STORE_KEY, f.read(), self.source_name)
+
+    def restore_if_missing(self):
+        """Fresh container (redeploy / restart on a host without disk): bring the client list back from the database."""
+        if self.store is None or os.path.exists(self.path):
+            return False
+        try:
+            row = self.store.load(self.STORE_KEY)
+        except Exception as e:
+            self.save_error = f"Could not read the saved client list from the database ({type(e).__name__})"
+            return False
+        if not row:
+            return False
+        data, name = row
+        os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
+        with open(self.path, "wb") as f:
+            f.write(data)
+        if name:
+            with open(self._name_file, "w", encoding="utf-8") as f:
+                f.write(name)
+        return True
+
     def _load(self):  # lock held
         if self._df is None:
+            self.restore_if_missing()
             self._df = _read(self.path) if os.path.exists(self.path) else pd.DataFrame(columns=ALL_COLS)
         return self._df
 
@@ -165,6 +195,7 @@ class ExcelManager:
         try:
             with self._save_lock:
                 self._save(snap)
+                self._push_to_store()                       # database copy; on error it is retried like the file
             self.save_error = ""
         except Exception as e:
             self.save_error = f"{type(e).__name__}: {e}"

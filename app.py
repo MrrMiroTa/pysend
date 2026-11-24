@@ -43,7 +43,7 @@ if len(os.getenv("SECRET_KEY", "")) < 32:
     sys.exit("Set a 32+ char SECRET_KEY in .env (see .env.example).")
 
 from excel_manager import ExcelManager, safe_cell  # noqa: E402
-from database import History, UserStore, data_dir, database_url, make_engine  # noqa: E402
+from database import FileStore, History, UserStore, data_dir, database_url, make_engine  # noqa: E402
 from telegram_bot import CHUNK, LogBuffer, TelegramBot, group_rows  # noqa: E402
 from timeutil import today as today_local  # noqa: E402
 
@@ -66,7 +66,13 @@ try:
     history.purge(today_local())               # keep only the last 3 months (rolling), also after a restart
 except Exception as _e:
     print("report cleanup skipped:", type(_e).__name__)
-excel = ExcelManager(os.path.join(data_dir(BASE), "clients_working.xlsx"))  # client list = Excel, loaded with Browse file
+# The client list is an Excel file. With an external database (DATABASE_URL, e.g. Neon) a copy is kept there too,
+# so a redeploy on a host without a disk (Render Free) does not lose the list and the 'Sent' marks.
+_use_db_copy = bool(os.getenv("DATABASE_URL", "").strip()) and not DB_URL.startswith("sqlite") and os.getenv("DB_FILE_COPY", "1") != "0"
+excel = ExcelManager(os.path.join(data_dir(BASE), "clients_working.xlsx"),
+                     store=FileStore(engine) if _use_db_copy else None)  # client list = Excel, loaded with Browse file
+if excel.restore_if_missing():
+    print("client list restored from the database")
 logs = LogBuffer()
 bot = TelegramBot(CFG, excel, logs, history)
 FAILS = {}  # ip -> [count, locked_until]  (login brute-force throttle)

@@ -338,7 +338,7 @@ class TelegramBot:
             try:
                 self.excel.flush(raise_errors=True)  # write all 'Sent' marks to the Excel file
             except Exception as e:
-                self.log.add("warn", f"Sent marks are kept in memory but the Excel file could not be saved yet ({type(e).__name__}). Close it in Excel; it retries automatically.")
+                self.log.add("warn", f"Sent marks are kept in memory but the client list could not be saved yet ({type(e).__name__}: {str(e)[:120]}). It retries automatically.")
             self.log.add("info", f"Done. Sent {self.progress['sent']}, failed {self.progress['failed']}. See the Report tab.")
         except Exception as e:
             reason, detail = explain(e)
