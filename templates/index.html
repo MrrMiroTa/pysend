@@ -195,6 +195,23 @@
             <tbody id="dRows"></tbody></table>
             <p id="dEmpty" class="empty-s muted" hidden>No sends in this period.</p></div></section>
 
+        <section class="card tbl"><div class="sec-title">ការកែប្រែដោយ Admin (Changes) <span class="muted small">· same date range · also in Export report</span></div>
+          <div class="toolbar">
+            <div class="pills" role="radiogroup" aria-label="Change type">
+              <label><input type="radio" name="cf" value="all" checked><span>All</span></label>
+              <label><input type="radio" name="cf" value="expiry"><span>ថ្ងៃផុតកំណត់ (Expiry)</span></label>
+              <label><input type="radio" name="cf" value="user"><span>Username/ID</span></label>
+              <label><input type="radio" name="cf" value="import"><span>Import</span></label>
+            </div>
+            <label class="search"><svg class="ic"><use href="#i-search"/></svg>
+              <input id="cQ" type="search" placeholder="Name, plate, admin…" autocomplete="off"></label>
+          </div>
+          <div class="scroll"><table>
+            <thead><tr><th>ពេលវេលា</th><th>Admin</th><th>សកម្មភាព</th><th class="hide-sm">NAME</th><th>ស្លាកលេខ</th><th>មុន (Old)</th><th>ក្រោយ (New)</th></tr></thead>
+            <tbody id="cRows"></tbody></table>
+            <p id="cEmpty" class="empty-s muted" hidden>No changes in this period.</p></div>
+          <div class="tfoot"><span>Showing <b id="cCount">0</b> changes</span></div></section>
+
         <section class="card tbl"><div class="sec-title">លម្អិត (Details)</div>
           <div class="scroll"><table>
             <thead><tr><th>ពេលវេលា</th><th>USER / ID</th><th class="hide-sm">ឧបករណ៍</th><th class="hide-sm">ស្លាកលេខ</th><th>ស្ថានភាព</th><th>មូលហេតុ (Reason)</th><th class="hide-sm">ផ្ញើដោយ</th></tr></thead>

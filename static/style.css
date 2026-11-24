@@ -212,3 +212,4 @@ th.sortable.asc::after{content:" \25B2";font-size:9px}th.sortable.desc::after{co
 .tools .btn .ic{width:15px;height:15px}
 .pill.noid{background:color-mix(in srgb,var(--warn,#d97706) 18%,transparent);color:var(--warn,#b45309)}
 #noIdCount:not(:empty)::before{content:"("}#noIdCount:not(:empty)::after{content:")"}
+td small.note{display:block;color:var(--muted);font-size:11px;margin-top:2px;white-space:nowrap}
