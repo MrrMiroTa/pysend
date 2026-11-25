@@ -90,6 +90,11 @@ def _read(path):
     return df
 
 
+def imei_key(v):
+    """IMEI compared without spaces/dashes/'.0' and case, so '8620 1234…' and '862012345…0' count as the same device."""
+    return re.sub(r"[^0-9a-z]", "", re.sub(r"\.0+$", "", str(v or "").strip()).lower())
+
+
 def safe_cell(v):
     """Neutralise spreadsheet formula injection (=,+,-,@) in exported cells."""
     s = "" if v is None else str(v)
@@ -314,6 +319,41 @@ class ExcelManager:
                 return []
             g = d.assign(has=(d["user"].str.strip() != "")).groupby("name").agg(plates=("plate", "size"), with_user=("has", "sum"))
             return [dict(name=n, plates=int(r.plates), with_user=int(r.with_user)) for n, r in g.iterrows()][:limit]
+
+    def merge_from_upload(self, file_storage):
+        """Add the rows of a new file to the CURRENT list. A row whose IMEI is already in the list (or appears
+        earlier in the new file) is skipped; rows without an IMEI cannot be checked, so they are skipped too.
+        The old rows and their 'Sent' marks are not touched."""
+        ext = ".csv" if file_storage.filename.lower().endswith(".csv") else ".xlsx"
+        os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
+        fd, tmp = tempfile.mkstemp(suffix=ext, dir=os.path.dirname(os.path.abspath(self.path)))
+        os.close(fd)
+        try:
+            file_storage.save(tmp)
+            new = _read(tmp)                                   # raises on bad format / missing columns
+            self.last_warnings = list(new.attrs.get("warnings", []))
+            with self.lock:
+                cur = self._load()
+                keys = new["imei"].map(imei_key)
+                empty = keys == ""
+                dup_old = keys.isin({imei_key(x) for x in cur["imei"]} - {""}) & ~empty
+                dup_file = keys.duplicated(keep="first") & ~empty & ~dup_old       # the same IMEI twice in the new file
+                add = new[~(empty | dup_old | dup_file)]
+                if len(add):
+                    if cur.empty:
+                        open(self._name_file, "w", encoding="utf-8").write(
+                            os.path.basename(file_storage.filename.replace("\\", "/"))[:80])
+                    self._df = pd.concat([cur, add], ignore_index=True)
+                    self._changed()
+                skipped = new[dup_old | dup_file]["imei"].tolist()
+                result = dict(total=len(new), added=len(add), duplicates=int((dup_old | dup_file).sum()),
+                              no_imei=int(empty.sum()), dup_imeis=skipped[:8])
+            if result["added"]:
+                self.flush(raise_errors=True)                  # also copies it to the database right away
+            return result
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
 
     def replace_from_upload(self, file_storage):
         """Validate an uploaded workbook fully before it replaces the current list."""

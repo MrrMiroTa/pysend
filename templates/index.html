@@ -73,7 +73,8 @@
       <div class="top-right">
         <span class="filechip" title="Current client list"><svg class="ic"><use href="#i-file-spreadsheet"/></svg><span id="fileName">No file loaded</span></span>
         <button id="dlTemplate" class="btn icon" type="button" title="Download the Excel template (the 7 required columns)" aria-label="Download Excel template"><svg class="ic"><use href="#i-file-spreadsheet"/></svg></button>
-        <button id="pick" class="btn" type="button"><svg class="ic"><use href="#i-upload"/></svg><span class="lbl-sm">Browse file</span></button>
+        <button id="pick" class="btn" type="button" title="Add the rows of a new file to the current list (duplicate IMEI are skipped)"><svg class="ic"><use href="#i-upload"/></svg><span class="lbl-sm">Browse file</span></button>
+        <button id="pickReplace" class="btn" type="button" title="Replace the whole current list with a new file"><svg class="ic"><use href="#i-file-spreadsheet"/></svg><span class="lbl-sm">Replace all</span></button>
         <input id="file" type="file" accept=".xlsx,.xlsm,.csv" hidden>
         <button id="theme" class="btn icon" type="button" aria-label="Toggle dark / light"><svg class="ic when-light"><use href="#i-moon"/></svg><svg class="ic when-dark"><use href="#i-sun"/></svg></button>
         <span class="me" title="Signed in"><span class="avatar">{{ username[:1]|upper }}</span><span class="me-name">{{ username }}</span></span>
@@ -138,7 +139,7 @@
             <thead><tr><th class="ck"><input type="checkbox" id="all" aria-label="Select all"></th><th class="sortable" data-sort="user">USER / ID</th><th class="hide-sm sortable" data-sort="name">NAME</th><th class="hide-sm sortable" data-sort="type">ប្រភេទ</th><th class="sortable" data-sort="plate">ស្លាកលេខ</th><th class="hide-sm sortable" data-sort="imei">IMEI</th><th class="hide-sm sortable" data-sort="expiry">ថ្ងៃផុតកំណត់</th><th class="sortable" data-sort="days">នៅសល់</th><th class="sortable" data-sort="state">ស្ថានភាព</th></tr></thead>
             <tbody id="rows"></tbody></table>
             <div id="empty" class="empty" hidden><svg class="ic xl"><use href="#i-file-spreadsheet"/></svg><p id="emptyMsg"></p>
-              <p class="muted small">Required columns (first sheet, header in row 1): <b>type, plate, imei, expiry_date, status, sent_at</b>. Optional: <b>name</b> (e.g. WL112) and <b>user</b> (Username/ID, can be filled in later on this page). Other columns are ignored.</p>
+              <p class="muted small">Required columns (first sheet, header in row 1): <b>type, plate, imei, expiry_date, status, sent_at</b>. Optional: <b>name</b> (e.g. WL112) and <b>user</b> (Username/ID, can be filled in later on this page). Other columns are ignored. Browsing a new file ADDS its rows to the current list; a row whose IMEI already exists is skipped.</p>
               <div class="row-btns"><button id="pick2" class="btn primary" type="button"><svg class="ic"><use href="#i-upload"/></svg>Browse file</button>
               <button id="dlTemplate2" class="btn" type="button"><svg class="ic"><use href="#i-download"/></svg>Download template</button></div></div></div>
           <div class="tfoot"><span id="pageInfo">Showing 0 results</span>
