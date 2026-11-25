@@ -194,20 +194,29 @@
     } catch (e) { say("error", e.message); }
   };
   $("#dlgClose").onclick = () => $("#dlg").close();
-  $("#pick").onclick = () => $("#file").click();
-  $("#pick2").onclick = () => $("#file").click();
+  let importMode = "merge";                                                 // merge = add new rows, skip duplicate IMEI
+  $("#pick").onclick = () => { importMode = "merge"; $("#file").click(); };
+  $("#pick2").onclick = () => { importMode = "merge"; $("#file").click(); };
+  $("#pickReplace").onclick = () => { importMode = "replace"; $("#file").click(); };
   $("#dlTemplate").onclick = $("#dlTemplate2").onclick = () => { location.href = "/api/template"; };
   async function upload(f) {
     if (!f) return;
-    if (!confirm(`Replace the current client list with "${f.name}"?`)) return;
+    const merge = importMode !== "replace";
+    if (merge ? total && !confirm(`Add the new rows from "${f.name}" to the current list?\nRows whose IMEI already exists are skipped.`)
+              : !confirm(`REPLACE the whole client list with "${f.name}"? The old data will be removed.`)) return;
     const fd = new FormData(); fd.append("file", f);
     try {
       toast("warn", "Importing…");
-      const r = await api(`/api/upload?normal=${$("#normal").value}&company=${$("#company").value}&size=${$("#pageSize").value}`, { method: "POST", body: fd });
+      const r = await api(`/api/upload?mode=${merge ? "merge" : "replace"}&normal=${$("#normal").value}&company=${$("#company").value}&size=${$("#pageSize").value}`, { method: "POST", body: fd });
       selected.clear(); $("#q").value = "";                                   // a leftover filter/search must not hide the new list
       document.querySelector("input[name=f][value=all]").checked = true;
       applyData(r.data);                                                      // show the new list right away (no refresh needed)
-      if (r.warnings && r.warnings.length) say("warn", `Imported ${r.rows.toLocaleString()} row(s) from ${r.file}, but: ${r.warnings.join(" · ")}. Fix them in Excel and import again.`);
+      if (r.mode === "merge") {
+        const dup = r.duplicates ? ` Skipped ${r.duplicates.toLocaleString()} duplicate IMEI (${r.dup_imeis.join(", ")}${r.duplicates > r.dup_imeis.length ? "…" : ""}).` : "";
+        const noi = r.no_imei ? ` Skipped ${r.no_imei.toLocaleString()} row(s) without IMEI.` : "";
+        const warn = r.warnings && r.warnings.length ? ` But: ${r.warnings.join(" · ")}.` : "";
+        say(r.added && !warn ? "ok" : "warn", `Added ${r.added.toLocaleString()} new row(s) of ${r.total.toLocaleString()}.${dup}${noi}${warn}`);
+      } else if (r.warnings && r.warnings.length) say("warn", `Imported ${r.rows.toLocaleString()} row(s) from ${r.file}, but: ${r.warnings.join(" · ")}. Fix them in Excel and import again.`);
       else say("ok", `Imported ${r.rows.toLocaleString()} row(s) from ${r.file}.`);
     } catch (e) { say("error", e.message); }
   }

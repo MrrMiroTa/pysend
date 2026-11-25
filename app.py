@@ -374,17 +374,30 @@ def upload():
         return jsonify(error="Please choose an Excel (.xlsx, .xlsm) or .csv file."), 400
     if bot.running:
         return jsonify(error="Wait for the running batch to finish."), 409
+    merge = request.args.get("mode", "merge") != "replace"       # default: ADD to the current list, skip duplicate IMEI
+    stats = {}
     try:
-        n = excel.replace_from_upload(f)
+        if merge:
+            stats = excel.merge_from_upload(f)
+            n = stats["added"]
+        else:
+            n = excel.replace_from_upload(f)
     except ValueError as e:
         return jsonify(error=f"Invalid file: {e}"), 400
     except Exception as e:
         app.logger.exception("Upload failed")  # full traceback in the terminal
         return jsonify(error=f"Could not import ({type(e).__name__}): {e}"), 500
-    logs.add("info", f"{g.user['username']} imported {n} row(s) from upload.")
-    log_changes([dict(action="import", new_value=f"{f.filename}: {n} rows")])
+    if merge:
+        note = f"{f.filename}: +{n} new, {stats['duplicates']} duplicate IMEI skipped" + (f", {stats['no_imei']} without IMEI skipped" if stats["no_imei"] else "")
+        logs.add("info", f"{g.user['username']} added {n} new row(s) from upload ({stats['duplicates']} duplicate IMEI skipped).")
+    else:
+        note = f"{f.filename}: {n} rows (list replaced)"
+        logs.add("info", f"{g.user['username']} imported {n} row(s) from upload (list replaced).")
+    log_changes([dict(action="import", new_value=note)])
     n_days, c_days = thresholds()  # the page asks for the new list in this same response (no second request needed)
-    return jsonify(rows=n, file=excel.source_name, warnings=excel.last_warnings,
+    return jsonify(rows=n, file=excel.source_name, warnings=excel.last_warnings, mode="merge" if merge else "replace",
+                   added=n, duplicates=stats.get("duplicates", 0), no_imei=stats.get("no_imei", 0),
+                   dup_imeis=stats.get("dup_imeis", []), total=stats.get("total", n),
                    data=build_data(n_days, c_days, "all", "", 1, request.args.get("size")))
 
 
