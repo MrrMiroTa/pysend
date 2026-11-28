@@ -231,3 +231,5 @@ dialog.wide{max-width:860px}dialog h3{font-size:14px;margin:14px 0 6px}
 .perm-tags{display:flex;gap:4px;flex-wrap:wrap}.perm-tags span{font-size:11px;padding:2px 7px;border-radius:99px;background:var(--surface-2);color:var(--muted)}
 .rdet>summary{cursor:pointer;list-style:none}.rdet[open]>summary{border-bottom:1px solid var(--line)}
 .inl{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted);margin:4px 0 8px}
+.lang-fab{position:absolute;top:-70px;right:52px}@media (max-width:900px){.lang-fab{top:-56px}}
+#langBtn .lang-lbl{font-weight:600}

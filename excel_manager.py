@@ -45,6 +45,11 @@ def _read(path):
         df = pd.read_excel(path, dtype=str, engine="openpyxl").fillna("")  # str keeps IMEI & Khmer intact
     found = [str(c).strip() for c in df.columns]
     keys = [_key(c) for c in found]
+    if "userid" in keys and "user" in keys and "name" not in keys:
+        # Layout "userid | ... | user":  userid = Telegram Username/ID, user = the client's name (e.g. WL112)
+        found[keys.index("user")] = "name"
+        keys[keys.index("user")] = "name"
+        df.columns = found
     picked = {}                                    # required column -> position in the file
     for canon in COLUMNS + ["user"]:               # 1st: exact names (type, plate, imei, expiry_date, status, sent_at, user)
         if _key(canon) in keys:
@@ -403,6 +408,14 @@ class ExcelManager:
                             "status": "Sent" if r["state"] == "sent" else "", "sent_at": safe_cell(r["sent_at"]),
                             "days_remaining": r["days"], "state": r["state"]} for r in rows],
                           columns=ALL_COLS + ["days_remaining", "state"])
+        return ExcelManager._xlsx(df)
+
+    @staticmethod
+    def _xlsx(df):
+        """Write in the layout of the client file: userid = Telegram Username/ID, user = the Name (WL112)."""
+        df = df.rename(columns={"user": "userid", "name": "user"})
+        first = ["userid", "type", "user_type", "plate", "imei", "expiry_date", "user", "status", "sent_at"]
+        df = df[first + [c for c in df.columns if c not in first]]
         buf = io.BytesIO()
         df.to_excel(buf, index=False, engine="openpyxl")
         buf.seek(0)
@@ -414,7 +427,4 @@ class ExcelManager:
         df = pd.DataFrame([["@username", "Normal", "paid_off", "ភ្នំពេញ 2A-1234", "862012345678901", nxt, "", "", "WL112", ""],
                            ["123456789", "Company", "paid_off", "សៀមរាប 1C-4321", "862012345678902", nxt, "", "", "WL113", ""],
                            ["", "Normal", "rental", "កណ្តាល 3B-5555", "862012345678903", nxt, "", "", "WL114", ""]], columns=ALL_COLS)
-        buf = io.BytesIO()
-        df.to_excel(buf, index=False, engine="openpyxl")
-        buf.seek(0)
-        return buf
+        return ExcelManager._xlsx(df)

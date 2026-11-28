@@ -14,7 +14,7 @@ python scripts/make_sample.py                          # optional sample Excel
 python scripts/login_telegram.py                       # one-time Telegram login (app must be stopped)
 python app.py                                          # open http://127.0.0.1:5000
 ```
-Excel format: the first sheet, header in row 1, with ALL 7 columns `user, type, plate, imei, expiry_date, status, sent_at` (use the template button). Other columns are ignored; a file missing any of the 7 is rejected. Optional columns: `name` (e.g. WL112) and `user_type` (`paid_off` or `rental`, empty = paid_off). Send rule: paid_off = Normal 7 / Company 14 days before expiry, rental = 30 days (1 month). Permissions per user are set by an admin in the Users tab; the account named by `ADMIN_USER` always has every permission.
+Excel format: the first sheet, header in row 1, with ALL 7 columns `user, type, plate, imei, expiry_date, status, sent_at` (use the template button). Other columns are ignored; a file missing any of the 7 is rejected. Layout (like `clients_template.xlsx`): `userid` (Telegram Username/ID, may be empty), `type`, `user_type`, `plate`, `imei`, `expiry_date`, `user` (the client Name, e.g. WL112), `status`, `sent_at`. Older files with `user` = Telegram ID and a `name` column still import. Optional: `user_type` (`paid_off` or `rental`, empty = paid_off). Send rule: paid_off = Normal 7 / Company 14 days before expiry, rental = 30 days (1 month). Permissions per user are set by an admin in the Users tab; the account named by `ADMIN_USER` always has every permission.
 
 ## Security built in
 - Hashed admin password (scrypt), login throttling (5 fails -> 5 min lock), 30-min idle logout, new session on login
