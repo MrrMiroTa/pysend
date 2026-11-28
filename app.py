@@ -616,11 +616,8 @@ def report_detail():
         return jsonify(error="Missing day / batch."), 400
     units = [unit_view(u) for u in history.batch_units(day, batch, request.args.get("imei", ""), request.args.get("ruser", ""))]
 
-    def section(items):                                  # Client (Count) = how many plates this client got in this section
-        per = Counter(u["user"] for u in items)
-        for u in items:
-            u["client_count"] = per[u["user"]]
-        return dict(rows=items, clients=len(per))
+    def section(items):                                  # Client (Count) = how many different user accounts got a message
+        return dict(rows=items, clients=len({u["user"] for u in items if u["status"] == "sent"}))
     return jsonify(paid_off=section([u for u in units if u["user_type"] != "rental"]),
                    rental=section([u for u in units if u["user_type"] == "rental"]))
 
