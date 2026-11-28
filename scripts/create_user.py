@@ -22,9 +22,9 @@ if user and not a.reset:
     sys.exit(f"User '{name}' already exists. Use --reset to change the password.")
 if not user and a.reset:
     sys.exit(f"User '{name}' does not exist.")
-pw = getpass.getpass("Password (8+ characters): ")
-if len(pw) < 8 or pw != getpass.getpass("Repeat password: "):
-    sys.exit("Passwords must match and be at least 8 characters.")
+pw = getpass.getpass("Password (10+ characters): ")
+if len(pw) < 10 or pw != getpass.getpass("Repeat password: "):
+    sys.exit("Passwords must match and be at least 10 characters.")
 h = generate_password_hash(pw, method="scrypt")
 if user:
     store.set_password(user["id"], h)

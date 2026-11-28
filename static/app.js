@@ -427,12 +427,13 @@
   let iTimer; for (const id of ["#rImei", "#rUser"]) $(id).addEventListener("input", () => { clearTimeout(iTimer); iTimer = setTimeout(loadReport, 350); });
 
   // ---------- report master -> detail (Paid Off / Rental) ----------
-  function fillUnits(body, emptyEl, countEl, list) {
-    body.replaceChildren(); emptyEl.hidden = list.length > 0; countEl.textContent = `(${list.length.toLocaleString()})`;
+  function fillUnits(body, emptyEl, countEl, sec) {
+    const list = sec.rows;
+    body.replaceChildren(); emptyEl.hidden = list.length > 0; countEl.textContent = `· ${list.length.toLocaleString()} plate(s) · ${sec.clients.toLocaleString()} client(s)`;
     for (const u of list) {
       const tr = document.createElement("tr"), who = el("div", "", u.name || u.user || "—"); if (u.name && u.user) who.append(el("small", "note", u.user));
       td(tr, who); td(tr, u.plate || "—"); td(tr, el("span", "mono", u.imei || "—")); td(tr, fmt(u.expiry));
-      const [km, en, ic] = RSTATUS[u.status] || ["", u.status, "i-circle-alert"], b = el("span", "badge b-" + u.status); b.append(icon(ic), `${km} (${en})`); td(tr, b);
+      const [km, en, ic] = RSTATUS[u.status] || ["", u.status, "i-circle-alert"], b = el("span", "badge b-" + u.status); b.append(icon(ic), `${km} (${en})`); td(tr, b); td(tr, String(u.client_count));
       body.appendChild(tr);
     }
   }
