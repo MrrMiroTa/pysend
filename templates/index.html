@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="km" data-theme="light">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -55,6 +55,7 @@
 <symbol id="i-circle-x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /> <path d="m15 9-6 6" /> <path d="m9 9 6 6" /></symbol>
 <symbol id="i-circle-dashed" viewBox="0 0 24 24"><path d="M10.1 2.182a10 10 0 0 1 3.8 0" /> <path d="M13.9 21.818a10 10 0 0 1-3.8 0" /> <path d="M17.609 3.721a10 10 0 0 1 2.69 2.7" /> <path d="M2.182 13.9a10 10 0 0 1 0-3.8" /> <path d="M20.279 17.609a10 10 0 0 1-2.7 2.69" /> <path d="M21.818 10.1a10 10 0 0 1 0 3.8" /> <path d="M3.721 6.391a10 10 0 0 1 2.7-2.69" /> <path d="M6.391 20.279a10 10 0 0 1-2.69-2.7" /></symbol>
 <symbol id="i-funnel" viewBox="0 0 24 24"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /> <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /> <path d="M2 12h20" /></symbol>
 </defs></svg>
 <div class="app">
   <aside class="side">
@@ -77,6 +78,7 @@
         <button id="pick" class="btn" type="button" data-perm="import" title="Add the rows of a new file to the current list (duplicate IMEI are skipped)"><svg class="ic"><use href="#i-upload"/></svg><span class="lbl-sm">Browse file</span></button>
         <button id="pickReplace" class="btn" type="button" data-perm="import" title="Replace the whole current list with a new file"><svg class="ic"><use href="#i-file-spreadsheet"/></svg><span class="lbl-sm">Replace all</span></button>
         <input id="file" type="file" accept=".xlsx,.xlsm,.csv" hidden>
+        <button id="langBtn" class="btn" type="button" aria-label="Language"><svg class="ic"><use href="#i-globe"/></svg><span class="lang-lbl lbl-sm"></span></button>
         <button id="theme" class="btn icon" type="button" aria-label="Toggle dark / light"><svg class="ic when-light"><use href="#i-moon"/></svg><svg class="ic when-dark"><use href="#i-sun"/></svg></button>
         <span class="me" title="Signed in"><span class="avatar">{{ username[:1]|upper }}</span><span class="me-name">{{ username }}</span></span>
         <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf }}">
@@ -321,6 +323,7 @@
   <button id="dlgClose" class="btn" type="button">Close</button></dialog>
 
 <script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script src="{{ url_for('static', filename='i18n.js') }}"></script>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

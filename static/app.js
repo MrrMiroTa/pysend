@@ -1,13 +1,12 @@
 (() => {
   const $ = (s) => document.querySelector(s);
+  const tt = (k, v) => I18N.t(k, v);                     // translate (English / Khmer, chosen with the language button)
   const csrf = $('meta[name=csrf]').content;
   const SVGNS = "http://www.w3.org/2000/svg";
   const DEFAULT_TPL = `សួស្តីបង! គណនី GPS របស់បង ({count} គ្រឿង) នឹងផុតកំណត់នៅថ្ងៃទី {expiry_date}\n\nសូមបងទំនាក់ទំនងបន្តសេវាតាមរយៈលេខទំនាក់ទំនង {phone} (Call / Telegram)។\n\nសូមបងទំនាក់ទំនងបន្តសេវាអោយបានមុនថ្ងៃផុតកំណត់ ជៀសវាងការផ្អាកការប្រើប្រាស់បណ្ដោះអាសន្ន និងការបន្តសេវាមិនបានជោគជ័យដោយសារក្រុមហ៊ុនស៊ីមកាតមិនបន្តសេវាជូន។`;
-  const STATUS = { safe: ["មិនទាន់ដល់ពេល", "Safe", "i-circle-check"], approaching: ["ជិតដល់ពេល", "Approaching", "i-clock"],
-    due: ["ជិតផុត", "Due", "i-circle-alert"], expired: ["ផុតកំណត់", "Expired", "i-circle-alert"],
-    sent: ["បានផ្ញើ", "Sent", "i-send"], invalid: ["កាលបរិច្ឆេទមិនត្រឹមត្រូវ", "Invalid", "i-circle-alert"] };
-  const TITLES = { main: ["ផ្ទាំងគ្រប់គ្រង", "Manage and notify upcoming tracking expirations"],
-    report: ["របាយការណ៍", "Daily send results, successes and failures"], users: ["អ្នកប្រើប្រាស់", "Admin accounts that can sign in"] };
+  const STATUS = { safe: "i-circle-check", approaching: "i-clock", due: "i-circle-alert", expired: "i-circle-alert", sent: "i-send", invalid: "i-circle-alert" };
+  const TITLES = { main: [tt("ផ្ទាំងគ្រប់គ្រង"), tt("Manage and notify upcoming tracking expirations")],
+    report: [tt("របាយការណ៍"), tt("Daily send results, successes and failures")], users: [tt("អ្នកប្រើប្រាស់"), tt("Admin accounts that can sign in")] };
   const PERMS = new Set((document.querySelector("meta[name=perms]").content || "").split(",").filter(Boolean));
   const can = (p) => PERMS.has(p);
   document.querySelectorAll("[data-perm]").forEach((e) => { if (!can(e.dataset.perm)) e.hidden = true; });   // the server checks every action again
@@ -29,7 +28,7 @@
     const res = await fetch(url, { credentials: "same-origin", ...opt, headers });
     if (res.status === 401) { location.href = "/login"; throw new Error("signed out"); }
     const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j.error || `Request failed (HTTP ${res.status}) - server not responding or restarted`);
+    if (!res.ok) throw new Error(j.error ? tt(j.error) : tt("Request failed (HTTP {n}) - server not responding or restarted", { n: res.status }));
     return j;
   }
   const post = (path, body) => api(`${path}?${qs()}`, { method: "POST", body: JSON.stringify(body) });
@@ -80,10 +79,10 @@
     const rows = all, size = +$("#pageSize").value;
     const body = $("#rows"); body.replaceChildren();
     $("#empty").hidden = rows.length > 0;
-    $("#emptyMsg").textContent = stats.units ? "No clients match your search or filter." : "No file loaded yet. Browse for an Excel file, or drag one onto this page.";
+    $("#emptyMsg").textContent = stats.units ? tt("No clients match your search or filter.") : tt("No file loaded yet. Browse for an Excel file, or drag one onto this page.");
     $("#pick2").hidden = !!stats.units;
     const from = total ? (page - 1) * size + 1 : 0;
-    $("#pageInfo").textContent = `Showing ${from.toLocaleString()}–${(from + rows.length - (total ? 1 : 0)).toLocaleString()} of ${total.toLocaleString()} results`;
+    $("#pageInfo").textContent = tt("Showing {from}–{to} of {total} results", { from: from.toLocaleString(), to: (from + rows.length - (total ? 1 : 0)).toLocaleString(), total: total.toLocaleString() });
     $("#pageNo").textContent = `${page} / ${pages}`; $("#prev").disabled = page <= 1; $("#next").disabled = page >= pages;
     for (const r of rows) {
       const tr = document.createElement("tr"); if (selected.has(r.id)) tr.className = "sel";
@@ -92,26 +91,26 @@
       cb.addEventListener("change", () => { cb.checked ? selected.add(r.id) : selected.delete(r.id); tr.classList.toggle("sel", cb.checked); info(); });
       td(tr, cb, "ck");
       const u = el("div", "cell-user");
-      if (r.user) u.append(avatar(r.user), el("span", "", r.user)); else u.append(el("span", "pill noid", "គ្មាន ID · No ID"));
+      if (r.user) u.append(avatar(r.user), el("span", "", r.user)); else u.append(el("span", "pill noid", tt("No ID")));
       td(tr, u);
       td(tr, el("span", "mono", r.name || "—"), "hide-sm");
       td(tr, el("span", "pill " + (r.type.toLowerCase().startsWith("comp") ? "t-company" : "t-normal"), r.type), "hide-sm");
-      td(tr, el("span", "pill " + (r.user_type === "rental" ? "t-rental" : "t-paid"), r.user_type === "rental" ? "Rental" : "Paid off"), "hide-sm");
+      td(tr, el("span", "pill " + (r.user_type === "rental" ? "t-rental" : "t-paid"), r.user_type === "rental" ? tt("Rental") : tt("Paid off")), "hide-sm");
       td(tr, r.plate, "plate"); td(tr, el("span", "mono", r.imei), "hide-sm"); const ex = el("div", "", fmt(r.expiry)); if (r.note) ex.append(el("small", "note", r.note)); ex.title = r.note || ""; td(tr, ex, "hide-sm");
-      td(tr, r.days === null ? "—" : el("span", "pill d-" + r.state, r.days + " ថ្ងៃ"));
-      const [km, en, ic] = STATUS[r.state], b = el("span", "badge b-" + r.state);
-      b.append(icon(ic), `${km} (${en})`); td(tr, b);
+      td(tr, r.days === null ? "—" : el("span", "pill d-" + r.state, tt("{n} days", { n: r.days })));
+      const b = el("span", "badge b-" + r.state);
+      b.append(icon(STATUS[r.state]), tt("st." + r.state)); td(tr, b);
       body.appendChild(tr);
     }
     info();
   }
   const info = () => {
-    $("#selInfo").textContent = selected.size ? `${selected.size.toLocaleString()} selected` : "";
+    $("#selInfo").textContent = selected.size ? tt("{n} selected", { n: selected.size.toLocaleString() }) : "";
     $("#selClear").hidden = !selected.size; $("#selAll").hidden = total <= all.length || selected.size >= total;
   };
 
   // ---------- stats + donut ----------
-  const SEGS = [["safe", "មិនទាន់ដល់ពេល · Safe ≥ 30"], ["approaching", "ជិតដល់ពេល · Approaching 7–29"], ["due", "ជិតផុត · Due ≤ 6"], ["expired", "ផុតកំណត់ · Expired"], ["sent", "បានផ្ញើ · Sent"]];
+  const SEGS = ["safe", "approaching", "due", "expired", "sent"].map((k) => [k, tt("SEG." + k)]);
   function drawDonut(s) {
     const svg = $("#donut"), sum = SEGS.reduce((a, [k]) => a + (s[k] || 0), 0);
     svg.replaceChildren(svgEl("circle", { class: "track", cx: 21, cy: 21, r: 15.9155 }));
@@ -119,7 +118,7 @@
     if (sum) for (const [k] of SEGS) { const v = s[k] || 0; if (!v) continue; const pct = (v / sum) * 100;
       svg.appendChild(svgEl("circle", { class: "seg seg-" + k, cx: 21, cy: 21, r: 15.9155, "stroke-dasharray": `${Math.max(pct - 0.6, 0.4)} ${100 - Math.max(pct - 0.6, 0.4)}`, "stroke-dashoffset": -off })); off += pct; }
     const n = svgEl("text", { x: 21, y: 22.5, class: "dn" }); n.textContent = sum.toLocaleString();
-    const l = svgEl("text", { x: 21, y: 27, class: "dl" }); l.textContent = "units";
+    const l = svgEl("text", { x: 21, y: 27, class: "dl" }); l.textContent = tt("units");
     svg.append(n, l);
     $("#legend").replaceChildren(...SEGS.map(([k, label]) => { const li = el("li"); li.append(el("i", "sw seg-" + k), el("span", "", label), el("b", "", (s[k] || 0).toLocaleString())); return li; }));
   }
@@ -135,12 +134,12 @@
   }
 
   function applyData(d) {
-    all = d.rows; total = d.total; page = d.page; pages = d.pages; $("#fileName").textContent = d.file || "No file loaded";
+    all = d.rows; total = d.total; page = d.page; pages = d.pages; $("#fileName").textContent = d.file || tt("No file loaded");
     renderStats(d.stats); firstLoad = false; render();
     let lo = $("#dmin").value.trim(), hi = $("#dmax").value.trim();                  // days-left range: show how many units match
     if (lo !== "" && hi !== "" && +lo > +hi) [lo, hi] = [hi, lo];                   // 3 → 1 works like 1 → 3
     $("#rangeClear").hidden = !(lo || hi);
-    $("#rangeInfo").textContent = (lo || hi) ? `នៅសល់ ${lo || "…"}–${hi || "…"} ថ្ងៃ: ${d.total.toLocaleString()} គ្រឿង` : "";
+    $("#rangeInfo").textContent = (lo || hi) ? tt("Days left {lo}–{hi}: {n} unit(s)", { lo: lo || "…", hi: hi || "…", n: d.total.toLocaleString() }) : "";
   }
   async function load() {
     try { applyData(await api(`/api/data?${qs()}&page=${page}&size=${$("#pageSize").value}`)); }
@@ -161,10 +160,10 @@
       const done = s.progress.sent + s.progress.failed;
       $("#runBanner").hidden = !s.running;
       if (s.running) {
-        $("#progress").textContent = `កំពុងផ្ញើ… Sending ${done}/${s.progress.total}`;
-        $("#runText").textContent = `កំពុងផ្ញើ… Sending ${done} of ${s.progress.total} clients · ${s.progress.sent} sent, ${s.progress.failed} failed`;
+        $("#progress").textContent = tt("Sending {done}/{total}", { done, total: s.progress.total });
+        $("#runText").textContent = tt("Sending {done} of {total} clients · {sent} sent, {failed} failed", { done, total: s.progress.total, sent: s.progress.sent, failed: s.progress.failed });
         $("#runBar").max = Math.max(s.progress.total, 1); $("#runBar").value = done;
-      } else if (wasRunning) $("#progress").textContent = `Done · sent ${s.progress.sent}, failed ${s.progress.failed}`;
+      } else if (wasRunning) $("#progress").textContent = tt("Done · sent {sent}, failed {failed}", { sent: s.progress.sent, failed: s.progress.failed });
       if ((wasRunning && !s.running) || (s.running && s.logs.length)) { load(); if (tab === "report" && can("report")) loadReport(); }
       if (wasRunning && !s.running && tab !== "report" && can("report")) $("#viewRep").hidden = false;
       if (s.running) $("#viewRep").hidden = true;
@@ -174,20 +173,20 @@
 
   async function send(mode) {
     const ids = [...selected];
-    if (mode === "selected" && !ids.length) return say("warn", "Select at least one row first.");
+    if (mode === "selected" && !ids.length) return say("warn", tt("Select at least one row first."));
     const force = $("#force").checked;
     let n;
     if (mode === "selected") n = ids.length;  // already-sent units are skipped by the server unless Force resend is on
     else n = stats.ready + (force ? stats.ready_resend : 0);
-    if (!n) return say("warn", mode === "selected" ? "Selected units are already Sent. Turn on Force resend to send again." : "No clients are due right now.");
-    const msg = force ? `FORCE RESEND is ON: ${n.toLocaleString()} unit(s) will be sent, including ones already sent before. Continue?`
-                      : `Send reminders for ${n.toLocaleString()} unit(s)? (one message per client; units already Sent are skipped)`;
+    if (!n) return say("warn", tt(mode === "selected" ? "Selected units are already Sent. Turn on Force resend to send again." : "No clients are due right now."));
+    const msg = force ? tt("FORCE RESEND is ON: {n} unit(s) will be sent, including ones already sent before. Continue?", { n: n.toLocaleString() })
+                      : tt("Send reminders for {n} unit(s)? (one message per client; units already Sent are skipped)", { n: n.toLocaleString() });
     if (!confirm(msg)) return;
     try {
       const r = await post("/api/send", { mode, ids, template: $("#tpl").value, limit: $("#limit").value, force, phone: $("#phone").value.trim() });
       $("#force").checked = false;  // safety: force mode switches itself off after each send
-      say("info", `Started: ${r.started} client message(s) queued.` + (force ? " (force resend)" : ""));
-      if (r.skipped) say("warn", `${r.skipped} plate(s) skipped, no Username/ID: ${r.skipped_names}. Use "Fill Username/ID".`);
+      say("info", tt("Started: {n} client message(s) queued.", { n: r.started }) + (force ? tt(" (force resend)") : ""));
+      if (r.skipped) say("warn", tt("{n} plate(s) skipped, no Username/ID: {names}. Use \"Fill Username/ID\".", { n: r.skipped, names: r.skipped_names }));
     } catch (e) { say("error", e.message); }
   }
 
@@ -200,7 +199,7 @@
       const ids = [...selected], r = await post("/api/preview", { mode: ids.length ? "selected" : "due", ids, template: $("#tpl").value, force: $("#force").checked, phone: $("#phone").value.trim() });
       $("#dlgText").textContent = r.text; const im = $("#dlgImg"); im.hidden = !r.image;
       if (r.image) im.src = "data:image/png;base64," + r.image;
-      $("#dlgTo").textContent = `To: ${r.user} · ${r.units} unit(s) · ${r.images} image(s), the message goes with the last image` + (r.image ? "" : " · table image unavailable (text list will be sent)");
+      $("#dlgTo").textContent = tt("To: {user} · {units} unit(s) · {images} image(s), the message goes with the last image", { user: r.user, units: r.units, images: r.images }) + (r.image ? "" : tt(" · table image unavailable (text list will be sent)"));
       $("#dlg").showModal();
     } catch (e) { say("error", e.message); }
   };
@@ -213,22 +212,22 @@
   async function upload(f) {
     if (!f || !can("import")) return;
     const merge = importMode !== "replace";
-    if (merge ? total && !confirm(`Add the new rows from "${f.name}" to the current list?\nRows whose IMEI already exists are skipped.`)
-              : !confirm(`REPLACE the whole client list with "${f.name}"? The old data will be removed.`)) return;
+    if (merge ? total && !confirm(tt("Add the new rows from \"{f}\" to the current list?\nRows whose IMEI already exists are skipped.", { f: f.name }))
+              : !confirm(tt("REPLACE the whole client list with \"{f}\"? The old data will be removed.", { f: f.name }))) return;
     const fd = new FormData(); fd.append("file", f);
     try {
-      toast("warn", "Importing…");
+      toast("warn", tt("Importing…"));
       const r = await api(`/api/upload?mode=${merge ? "merge" : "replace"}&normal=${$("#normal").value}&company=${$("#company").value}&rental=${$("#rental").value}&size=${$("#pageSize").value}`, { method: "POST", body: fd });
       selected.clear(); $("#q").value = ""; $("#dmin").value = $("#dmax").value = ""; $("#utype").value = "all";   // a leftover filter/search must not hide the new list
       document.querySelector("input[name=f][value=all]").checked = true;
       applyData(r.data);                                                      // show the new list right away (no refresh needed)
       if (r.mode === "merge") {
-        const dup = r.duplicates ? ` Skipped ${r.duplicates.toLocaleString()} duplicate IMEI (${r.dup_imeis.join(", ")}${r.duplicates > r.dup_imeis.length ? "…" : ""}).` : "";
-        const noi = r.no_imei ? ` Skipped ${r.no_imei.toLocaleString()} row(s) without IMEI.` : "";
-        const warn = r.warnings && r.warnings.length ? ` But: ${r.warnings.join(" · ")}.` : "";
-        say(r.added && !warn ? "ok" : "warn", `Added ${r.added.toLocaleString()} new row(s) of ${r.total.toLocaleString()}.${dup}${noi}${warn}`);
-      } else if (r.warnings && r.warnings.length) say("warn", `Imported ${r.rows.toLocaleString()} row(s) from ${r.file}, but: ${r.warnings.join(" · ")}. Fix them in Excel and import again.`);
-      else say("ok", `Imported ${r.rows.toLocaleString()} row(s) from ${r.file}.`);
+        const dup = r.duplicates ? tt(" Skipped {n} duplicate IMEI ({list}).", { n: r.duplicates.toLocaleString(), list: r.dup_imeis.join(", ") + (r.duplicates > r.dup_imeis.length ? "…" : "") }) : "";
+        const noi = r.no_imei ? tt(" Skipped {n} row(s) without IMEI.", { n: r.no_imei.toLocaleString() }) : "";
+        const warn = r.warnings && r.warnings.length ? tt(" But: {w}.", { w: r.warnings.join(" · ") }) : "";
+        say(r.added && !warn ? "ok" : "warn", tt("Added {n} new row(s) of {total}.", { n: r.added.toLocaleString(), total: r.total.toLocaleString() }) + dup + noi + warn);
+      } else if (r.warnings && r.warnings.length) say("warn", tt("Imported {n} row(s) from {f}, but: {w}. Fix them in Excel and import again.", { n: r.rows.toLocaleString(), f: r.file, w: r.warnings.join(" · ") }));
+      else say("ok", tt("Imported {n} row(s) from {f}.", { n: r.rows.toLocaleString(), f: r.file }));
     } catch (e) { say("error", e.message); }
   }
   $("#file").onchange = (ev) => { upload(ev.target.files[0]); ev.target.value = ""; };
@@ -251,7 +250,7 @@
   $("#next").onclick = () => { if (page < pages) { page++; load(); } };
   $("#selClear").onclick = () => { selected.clear(); render(); };
   $("#selAll").onclick = async () => {
-    try { const d = await api("/api/ids?" + qs()); d.ids.forEach((i) => selected.add(i)); render(); say("ok", `${selected.size.toLocaleString()} units selected.`); }
+    try { const d = await api("/api/ids?" + qs()); d.ids.forEach((i) => selected.add(i)); render(); say("ok", tt("{n} units selected.", { n: selected.size.toLocaleString() })); }
     catch (e) { say("error", e.message); }
   };
 
@@ -270,24 +269,24 @@
   const showErr = (id, msg) => { const e = $(id); e.textContent = msg || ""; e.hidden = !msg; };
   $("#btnExp").onclick = () => {
     closeMore();
-    if (!selected.size) return say("warn", "Select plates first (search a Name such as WL012, then 'Select all matching').");
-    $("#expInfo").textContent = `${selected.size.toLocaleString()} plate(s) selected.`; $("#expDate").value = ""; showErr("#expErr"); $("#expDlg").showModal();
+    if (!selected.size) return say("warn", tt("Select plates first (search a Name such as WL012, then 'Select all matching')."));
+    $("#expInfo").textContent = tt("{n} plate(s) selected.", { n: selected.size.toLocaleString() }); $("#expDate").value = ""; showErr("#expErr"); $("#expDlg").showModal();
   };
   $("#expCancel").onclick = () => $("#expDlg").close();
   $("#expSave").onclick = async () => {
-    if (!$("#expDate").value) return showErr("#expErr", "Choose the new expiry date.");
+    if (!$("#expDate").value) return showErr("#expErr", tt("Choose the new expiry date."));
     try {
       const r = await api("/api/update_expiry", { method: "POST", body: JSON.stringify({ ids: [...selected], expiry_date: $("#expDate").value }) });
-      $("#expDlg").close(); selected.clear(); say("ok", `New expiry date ${fmt($("#expDate").value)} saved on ${r.updated.toLocaleString()} plate(s).`); load();
+      $("#expDlg").close(); selected.clear(); say("ok", tt("New expiry date {d} saved on {n} plate(s).", { d: fmt($("#expDate").value), n: r.updated.toLocaleString() })); load();
     } catch (e) { showErr("#expErr", e.message); }
   };
   let nameMap = {};
-  const FILL_HELP = "Type a Name. Every plate with this Name gets the Username/ID.";
+  const FILL_HELP = tt("Type a Name. Every plate with this Name gets the Username/ID.");
   function fillList() {                          // the list shows only Names WITHOUT an ID (tick the box to also list the ones that have one)
     const all = $("#fillAll").checked, items = Object.values(nameMap).filter((n) => all || n.with_user < n.plates);
     $("#nameList").replaceChildren(...items.map((n) => { const o = document.createElement("option"); o.value = n.name;
-      o.label = n.ids.length ? `ID: ${n.ids.join(", ")}` : `${n.plates} plate(s) · no ID`; return o; }));
-    $("#fillCount").textContent = `${items.length.toLocaleString()} Name`;
+      o.label = n.ids.length ? tt("ID: {ids}", { ids: n.ids.join(", ") }) : tt("{n} plate(s) · no ID", { n: n.plates }); return o; }));
+    $("#fillCount").textContent = tt("{n} Name", { n: items.length.toLocaleString() });
   }
   $("#btnFill").onclick = async () => {
     $("#fillName").value = $("#q").value.trim(); $("#fillUser").value = ""; $("#fillAll").checked = false; showErr("#fillErr"); $("#fillInfo").textContent = FILL_HELP;
@@ -299,21 +298,21 @@
     const n = nameMap[$("#fillName").value.trim().toLowerCase()];
     if (!n) { $("#fillInfo").textContent = FILL_HELP; return; }
     $("#fillInfo").textContent = n.ids.length
-      ? `ID បច្ចុប្បន្ន (current): ${n.ids.join(", ")} · ${n.with_user}/${n.plates} plate(s). Typing a new ID below will CHANGE it.`
-      : `${n.plates} plate(s) have this Name, none has a Username/ID yet.`;
-    if (n.ids.length === 1 && !$("#fillUser").value) $("#fillUser").placeholder = `old: ${n.ids[0]}`;
+      ? tt("Current ID: {ids} · {w}/{p} plate(s). Typing a new ID below will CHANGE it.", { ids: n.ids.join(", "), w: n.with_user, p: n.plates })
+      : tt("{p} plate(s) have this Name, none has a Username/ID yet.", { p: n.plates });
+    if (n.ids.length === 1 && !$("#fillUser").value) $("#fillUser").placeholder = tt("old: {id}", { id: n.ids[0] });
   }
   $("#fillName").addEventListener("input", fillHint);
   $("#fillAll").addEventListener("change", fillList);
   $("#fillCancel").onclick = () => $("#fillDlg").close();
   $("#fillSave").onclick = async () => {
     const name = $("#fillName").value.trim(), user = $("#fillUser").value.trim();
-    if (!name || !user) return showErr("#fillErr", "Enter the Name and the Username/ID.");
+    if (!name || !user) return showErr("#fillErr", tt("Enter the Name and the Username/ID."));
     const n = nameMap[name.toLowerCase()];
-    if (n && n.ids.length && !confirm(`${name} already has the Username/ID ${n.ids.join(", ")}.\nChange it to ${user} on all ${n.plates} plate(s)?`)) return;
+    if (n && n.ids.length && !confirm(tt("{name} already has the Username/ID {ids}.\nChange it to {user} on all {p} plate(s)?", { name, ids: n.ids.join(", "), user, p: n.plates }))) return;
     try {
       const r = await api("/api/set_user", { method: "POST", body: JSON.stringify({ name, user }) });
-      $("#fillDlg").close(); say("ok", `Username/ID ${user} applied to ${r.updated.toLocaleString()} plate(s) named ${name}.`); load();
+      $("#fillDlg").close(); say("ok", tt("Username/ID {user} applied to {n} plate(s) named {name}.", { user, n: r.updated.toLocaleString(), name })); load();
     } catch (e) { showErr("#fillErr", e.message); }
   };
 
@@ -333,7 +332,7 @@
   $("#viewRep").onclick = () => { setRange("today", false); show("report"); };
 
   // ---------- report (by day + status) ----------
-  const RSTATUS = { sent: ["ជោគជ័យ", "Success", "i-circle-check"], failed: ["បរាជ័យ", "Failed", "i-circle-x"], skipped: ["មិនបានផ្ញើ", "Skipped", "i-clock"] };
+  const RSTATUS = { sent: "i-circle-check", failed: "i-circle-x", skipped: "i-clock" };
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   function setRange(kind, reload = true) {
     const to = new Date(), from = new Date();
@@ -343,7 +342,7 @@
     document.querySelectorAll("[data-range]").forEach((b) => b.classList.toggle("on", b.dataset.range === kind));
     if (reload) loadReport();
   }
-  const CHANGE_LABEL = { expiry: "ថ្ងៃផុតកំណត់ (Expiry date)", user: "Username/ID", import: "Import file" };
+  const CHANGE_LABEL = { expiry: tt("ថ្ងៃផុតកំណត់ (Expiry date)"), user: tt("Username/ID"), import: tt("Import file") };
   const rq = () => {
     const p = new URLSearchParams({ status: document.querySelector("input[name=rf]:checked").value, from: $("#rFrom").value, to: $("#rTo").value });
     if (!$("#rFrom").value && !$("#rTo").value) p.set("all", "1");
@@ -364,7 +363,7 @@
     const step = plotW / data.length, bw = Math.min(42, step * 0.62), every = Math.ceil(data.length / 8);
     data.forEach((d, i) => {
       const x = L + step * i + (step - bw) / 2, g = svgEl("g", { class: "bar" }); let y = T + plotH;
-      const tip = svgEl("title"); tip.textContent = `${d.day}: ${d.sent} success, ${d.failed} failed, ${d.skipped} skipped`; g.appendChild(tip);
+      const tip = svgEl("title"); tip.textContent = tt("{day}: {s} success, {f} failed, {k} skipped", { day: d.day, s: d.sent, f: d.failed, k: d.skipped }); g.appendChild(tip);
       for (const [k, cls] of [["sent", "b-s"], ["failed", "b-f"], ["skipped", "b-k"]]) { const h = (d[k] / max) * plotH; if (!h) continue; y -= h;
         g.appendChild(svgEl("rect", { class: cls, x, y, width: bw, height: h, rx: 3 })); }
       g.appendChild(svgEl("rect", { x, y: T, width: bw, height: plotH, fill: "transparent" }));
@@ -376,13 +375,13 @@
   async function loadReport() {
     try {
       const d = await api("/api/report?" + rq()), m = d.summary;
-      if (d.keep_from) { $("#rFrom").min = $("#rTo").min = d.keep_from; $("#keepNote").textContent = `Report keeps the last 3 months (from ${d.keep_from}); older days are removed automatically.`; }
+      if (d.keep_from) { $("#rFrom").min = $("#rTo").min = d.keep_from; $("#keepNote").textContent = tt("Report keeps the last 3 months (from {d}); older days are removed automatically.", { d: d.keep_from }); }
       setNum("#rTotal", m.total); setNum("#rSent", m.sent); setNum("#rFailed", m.failed); setNum("#rSkipped", m.skipped);
-      $("#rClients").textContent = m.clients_sent.toLocaleString(); $("#rRate").textContent = (m.total ? Math.round((m.sent / m.total) * 100) : 0) + "% success";
+      $("#rClients").textContent = m.clients_sent.toLocaleString(); $("#rRate").textContent = tt("{n}% success", { n: m.total ? Math.round((m.sent / m.total) * 100) : 0 });
       drawChart(d.days);
       const dr = $("#dRows"); dr.replaceChildren(); $("#dEmpty").hidden = d.days.length > 0;
       for (const x of d.days) {
-        const tr = document.createElement("tr"); tr.className = "click"; tr.title = "Show this day";
+        const tr = document.createElement("tr"); tr.className = "click"; tr.title = tt("Show this day");
         td(tr, x.day); td(tr, String(x.total)); td(tr, String(x.sent), "ok"); td(tr, String(x.failed), x.failed ? "bad" : "");
         td(tr, String(x.skipped), x.skipped ? "warn" : ""); td(tr, (x.total ? Math.round((x.sent / x.total) * 100) : 0) + "%");
         tr.addEventListener("click", () => pickDay(x.day)); dr.appendChild(tr);
@@ -390,11 +389,11 @@
       const mb = $("#mRows"); mb.replaceChildren(); $("#mEmpty").hidden = d.master.length > 0; $("#mCount").textContent = d.master.length.toLocaleString();
       for (const m of d.master) {                                           // Report master: one line per send
         const tr = document.createElement("tr");
-        td(tr, m.ts); td(tr, el("span", "kind", m.kind === "auto" ? "Auto" : "Manual"));
-        td(tr, m.period ? `${m.period} ថ្ងៃ` : "—");
-        const ms = el("div", "", String(m.sent)); if (m.failed) ms.append(el("span", "cnt-fail", `${m.failed} fail`)); if (m.skipped) ms.append(el("span", "cnt-fail", `${m.skipped} skipped`));
+        td(tr, m.ts); td(tr, el("span", "kind", m.kind === "auto" ? tt("Auto") : tt("Manual")));
+        td(tr, m.period ? tt("{n} days", { n: m.period }) : "—");
+        const ms = el("div", "", String(m.sent)); if (m.failed) ms.append(el("span", "cnt-fail", tt("{n} fail", { n: m.failed }))); if (m.skipped) ms.append(el("span", "cnt-fail", tt("{n} skipped", { n: m.skipped })));
         td(tr, ms); td(tr, String(m.clients));
-        const b = el("button", "btn sm", "Detail"); b.type = "button"; b.onclick = () => openDetail(m); td(tr, b);
+        const b = el("button", "btn sm", tt("Detail")); b.type = "button"; b.onclick = () => openDetail(m); td(tr, b);
         mb.appendChild(tr);
       }
       const body = $("#rRows"); body.replaceChildren();
@@ -403,8 +402,8 @@
         const tr = document.createElement("tr");
         td(tr, r.ts); const u = el("div", "cell-user"); u.append(avatar(r.user), el("span", "", r.user)); td(tr, u);
         td(tr, String(r.units), "hide-sm"); td(tr, r.plates || "—", "hide-sm");
-        const [km, en, ic] = RSTATUS[r.status] || ["", r.status, "i-circle-alert"], b = el("span", "badge b-" + r.status);
-        b.append(icon(ic), `${km} (${en})`); td(tr, b);
+        const b = el("span", "badge b-" + r.status);
+        b.append(icon(RSTATUS[r.status] || "i-circle-alert"), tt("rs." + r.status)); td(tr, b);
         const why = td(tr, r.reason || "—", "why " + (r.status === "failed" ? "bad" : r.status === "skipped" ? "skip" : ""));
         if (r.detail) why.title = r.detail;  // technical detail on hover
         td(tr, r.sent_by || "—", "hide-sm"); body.appendChild(tr);
@@ -418,7 +417,7 @@
         td(tr, String(c.count));
         const val = c.action === "import" ? c.note : (c.new ? `${(isDate ? fmt(c.old) : c.old) || "—"} → ${isDate ? fmt(c.new) : c.new}` : "");
         td(tr, val || "—", "hide-sm");
-        const b = el("button", "btn sm", "Detail"); b.type = "button"; b.onclick = () => openChange(c); td(tr, b);
+        const b = el("button", "btn sm", tt("Detail")); b.type = "button"; b.onclick = () => openChange(c); td(tr, b);
         cb.appendChild(tr);
       }
     } catch (e) { say("error", e.message); }
@@ -429,11 +428,11 @@
   // ---------- report master -> detail (Paid Off / Rental) ----------
   function fillUnits(body, emptyEl, countEl, sec) {
     const list = sec.rows;
-    body.replaceChildren(); emptyEl.hidden = list.length > 0; countEl.textContent = `· Client (Count): ${sec.clients.toLocaleString()} · ${list.length.toLocaleString()} plate(s)`;
+    body.replaceChildren(); emptyEl.hidden = list.length > 0; countEl.textContent = tt("· Client (Count): {c} · {n} plate(s)", { c: sec.clients.toLocaleString(), n: list.length.toLocaleString() });
     for (const u of list) {
       const tr = document.createElement("tr"), who = el("div", "", u.name || u.user || "—"); if (u.name && u.user) who.append(el("small", "note", u.user));
       td(tr, who); td(tr, u.plate || "—"); td(tr, el("span", "mono", u.imei || "—")); td(tr, fmt(u.expiry));
-      const [km, en, ic] = RSTATUS[u.status] || ["", u.status, "i-circle-alert"], b = el("span", "badge b-" + u.status); b.append(icon(ic), `${km} (${en})`); td(tr, b);
+      const b = el("span", "badge b-" + u.status); b.append(icon(RSTATUS[u.status] || "i-circle-alert"), tt("rs." + u.status)); td(tr, b);
       body.appendChild(tr);
     }
   }
@@ -441,8 +440,8 @@
     try {
       const q = new URLSearchParams({ day: m.day, batch: m.batch, imei: $("#rImei").value.trim(), ruser: $("#rUser").value.trim() });
       const d = await api("/api/report/detail?" + q);
-      $("#rdTitle").textContent = `Detail · ${m.ts} · ${m.kind === "auto" ? "Auto" : "Manual"}`;
-      $("#rdInfo").textContent = `Period ${m.period || "—"} ថ្ងៃ · ${m.sent} sent · ${m.clients} client(s)`;
+      $("#rdTitle").textContent = tt("Detail · {ts} · {kind}", { ts: m.ts, kind: m.kind === "auto" ? tt("Auto") : tt("Manual") });
+      $("#rdInfo").textContent = tt("Period {p} days · {s} sent · {c} client(s)", { p: m.period || "—", s: m.sent, c: m.clients });
       fillUnits($("#rdPaid"), $("#rdPaidE"), $("#rdPaidN"), d.paid_off); fillUnits($("#rdRent"), $("#rdRentE"), $("#rdRentN"), d.rental);
       $("#rdDlg").showModal();
     } catch (e) { say("error", e.message); }
@@ -451,7 +450,7 @@
   async function openChange(c) {
     try {
       const d = await api("/api/report/change_detail?" + new URLSearchParams({ ts: c.ts, actor: c.actor, action: c.action })), isDate = c.action === "expiry";
-      $("#cdTitle").textContent = `${CHANGE_LABEL[c.action] || c.action} · ${c.ts}`; $("#cdInfo").textContent = `Admin: ${c.actor || "—"} · ${d.rows.length.toLocaleString()} item(s)`;
+      $("#cdTitle").textContent = `${CHANGE_LABEL[c.action] || c.action} · ${c.ts}`; $("#cdInfo").textContent = tt("Admin: {a} · {n} item(s)", { a: c.actor || "—", n: d.rows.length.toLocaleString() });
       const body = $("#cdRows"); body.replaceChildren();
       for (const r of d.rows) { const tr = document.createElement("tr");
         td(tr, r.name || "—"); td(tr, r.plate || "—"); td(tr, (isDate ? fmt(r.old_value) : r.old_value) || "—", "muted"); td(tr, (isDate ? fmt(r.new_value) : r.new_value) || "—"); body.appendChild(tr); }
@@ -466,24 +465,24 @@
   setRange("7", false);
 
   // ---------- admin users + permissions ----------
-  const PERM_LABEL = { report: "Report", import: "Import", send: "Send", expiry: "Expiry", fill_id: "Fill ID", export: "Export", users: "Admin" };
+  const PERM_LABEL = Object.fromEntries(["report", "import", "send", "expiry", "fill_id", "export", "users"].map((k) => [k, tt("perm." + k)]));
   let dlgMode = null, dlgUser = null;
   async function loadUsers() {
     try {
       const d = await api("/api/users"), body = $("#uRows"); body.replaceChildren();
       for (const u of d.users) {
         const tr = document.createElement("tr");
-        const c = el("div", "cell-user"); c.append(avatar(u.username), el("span", "", u.username + (u.me ? "  (you)" : ""))); td(tr, c);
-        td(tr, el("span", "badge " + (u.active ? "b-sent" : "b-failed"), u.active ? "Active" : "Disabled"));
-        const tags = el("div", "perm-tags"); if (u.main) tags.append(el("span", "", "Main admin · all")); else if (!u.permissions.length) tags.append(el("span", "", "— none —"));
+        const c = el("div", "cell-user"); c.append(avatar(u.username), el("span", "", u.username + (u.me ? "  " + tt("(you)") : ""))); td(tr, c);
+        td(tr, el("span", "badge " + (u.active ? "b-sent" : "b-failed"), u.active ? tt("Active") : tt("Disabled")));
+        const tags = el("div", "perm-tags"); if (u.main) tags.append(el("span", "", tt("Main admin · all"))); else if (!u.permissions.length) tags.append(el("span", "", tt("— none —")));
         else u.permissions.forEach((p) => tags.append(el("span", "", PERM_LABEL[p] || p))); td(tr, tags);
         td(tr, u.created_at || "—", "hide-sm"); td(tr, u.last_login || "—", "hide-sm");
         const box = el("div", "row-btns"), act = (label, cls, fn) => { const b = el("button", "btn sm " + cls, label); b.type = "button"; b.onclick = fn; box.appendChild(b); };
-        if (!u.main) act("សិទ្ធិ · Permissions", "", () => openDlg("perms", u));
-        act("Reset password", "", () => openDlg("reset", u));
+        if (!u.main) act(tt("Permissions"), "", () => openDlg("perms", u));
+        act(tt("Reset password"), "", () => openDlg("reset", u));
         if (!u.me) {
-          act(u.active ? "Disable" : "Enable", "", async () => { try { await api(`/api/users/${u.id}/active`, { method: "POST", body: JSON.stringify({ active: !u.active }) }); loadUsers(); } catch (e) { say("error", e.message); } });
-          act("Delete", "danger", async () => { if (!confirm(`Delete user "${u.username}"?`)) return; try { await api(`/api/users/${u.id}/delete`, { method: "POST", body: "{}" }); loadUsers(); } catch (e) { say("error", e.message); } });
+          act(u.active ? tt("Disable") : tt("Enable"), "", async () => { try { await api(`/api/users/${u.id}/active`, { method: "POST", body: JSON.stringify({ active: !u.active }) }); loadUsers(); } catch (e) { say("error", e.message); } });
+          act(tt("Delete"), "danger", async () => { if (!confirm(tt("Delete user \"{u}\"?", { u: u.username }))) return; try { await api(`/api/users/${u.id}/delete`, { method: "POST", body: "{}" }); loadUsers(); } catch (e) { say("error", e.message); } });
         }
         td(tr, box); body.appendChild(tr);
       }
@@ -492,7 +491,7 @@
   const permBoxes = () => [...document.querySelectorAll("#uPerms input[type=checkbox]")];
   function openDlg(mode, u) {
     dlgMode = mode; dlgUser = u; $("#uErr").hidden = true; $("#uPass").value = "";
-    $("#uTitle").textContent = mode === "add" ? "Add user" : mode === "perms" ? `សិទ្ធិ · Permissions: ${u.username}` : `Reset password: ${u.username}`;
+    $("#uTitle").textContent = mode === "add" ? tt("Add user") : mode === "perms" ? tt("Permissions: {u}", { u: u.username }) : tt("Reset password: {u}", { u: u.username });
     $("#uName").value = u ? u.username : ""; $("#uName").disabled = mode !== "add";
     $("#uPassRow").hidden = mode === "perms"; $("#uPerms").hidden = mode === "reset";
     const have = new Set(mode === "perms" ? u.permissions : ["report", "import", "send", "expiry", "fill_id", "export"]);   // new users: everything except Admin
@@ -505,7 +504,7 @@
       if (dlgMode === "add") await api("/api/users", { method: "POST", body: JSON.stringify({ username: $("#uName").value, password: $("#uPass").value, permissions: perms }) });
       else if (dlgMode === "perms") await api(`/api/users/${dlgUser.id}/permissions`, { method: "POST", body: JSON.stringify({ permissions: perms }) });
       else await api(`/api/users/${dlgUser.id}/password`, { method: "POST", body: JSON.stringify({ password: $("#uPass").value }) });
-      $("#uDlg").close(); say("ok", dlgMode === "add" ? "User created." : dlgMode === "perms" ? "Permissions saved." : "Password changed."); loadUsers();
+      $("#uDlg").close(); say("ok", tt(dlgMode === "add" ? "User created." : dlgMode === "perms" ? "Permissions saved." : "Password changed.")); loadUsers();
     } catch (e) { $("#uErr").textContent = e.message; $("#uErr").hidden = false; }
   }
   $("#uAdd").onclick = () => openDlg("add", null);
