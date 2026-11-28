@@ -213,3 +213,21 @@ th.sortable.asc::after{content:" \25B2";font-size:9px}th.sortable.desc::after{co
 .pill.noid{background:color-mix(in srgb,var(--warn,#d97706) 18%,transparent);color:var(--warn,#b45309)}
 #noIdCount:not(:empty)::before{content:"("}#noIdCount:not(:empty)::after{content:")"}
 td small.note{display:block;color:var(--muted);font-size:11px;margin-top:2px;white-space:nowrap}
+
+/* ===== v: buckets, days range, More menu, report master, permissions ===== */
+.range{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-basis:100%}
+.range input[type=number]{width:78px;padding:6px 8px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit}
+.range select{padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;margin-left:auto}
+.rng-info{color:var(--accent);font-size:13px}
+.more{position:relative}.menu{position:absolute;right:0;top:calc(100% + 6px);z-index:30;min-width:230px;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:var(--shadow-lg);display:grid;gap:4px}
+.menu .btn{width:100%;justify-content:flex-start}
+.pill.t-rental{background:var(--amber-soft);color:var(--amber)}.pill.t-paid{background:var(--green-soft);color:var(--green)}
+.kind{font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--surface-2);color:var(--muted)}
+.cnt-fail{color:var(--red);font-size:12px;margin-left:6px}
+dialog.wide{max-width:860px}dialog h3{font-size:14px;margin:14px 0 6px}
+.scroll.sm{max-height:240px}
+.perms{border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:8px;margin:10px 0}.perms legend{font-size:12px;font-weight:700;color:var(--muted);padding:0 6px}
+.perms label{display:flex;gap:10px;align-items:flex-start;cursor:pointer}.perms label small{display:block;color:var(--muted);font-size:11px}.perms .adm{border-top:1px dashed var(--line);padding-top:8px}
+.perm-tags{display:flex;gap:4px;flex-wrap:wrap}.perm-tags span{font-size:11px;padding:2px 7px;border-radius:99px;background:var(--surface-2);color:var(--muted)}
+.rdet>summary{cursor:pointer;list-style:none}.rdet[open]>summary{border-bottom:1px solid var(--line)}
+.inl{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted);margin:4px 0 8px}

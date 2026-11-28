@@ -6,8 +6,8 @@ import pandas as pd
 from timeutil import now as now_local, today as today_local
 
 COLUMNS = ["type", "plate", "imei", "expiry_date", "status", "sent_at"]            # required
-OPTIONAL = ["user", "name", "note"]   # user = Telegram Username/ID (filled later); name = e.g. WL112; note = renewal note
-ALL_COLS = ["user", "type", "plate", "imei", "expiry_date", "status", "sent_at", "name", "note"]
+OPTIONAL = ["user", "name", "note", "user_type"]   # user = Telegram Username/ID (filled later); name = e.g. WL112; note = renewal note; user_type = rental / paid_off
+ALL_COLS = ["user", "type", "user_type", "plate", "imei", "expiry_date", "status", "sent_at", "name", "note"]
 # Header names we accept (compared lower-case, ignoring spaces / _ / - / "/"). Khmer headers too.
 SYNONYMS = {
     "user": "user userid username userorid useridorusername telegram telegramid telegramuser telegramusername chatid client clientid contact",
@@ -18,13 +18,22 @@ SYNONYMS = {
     "status": "status", "sent_at": "sentat",
     "name": "name devicename unitname vehiclename trackername gpsname ឈ្មោះ",
     "note": "note renewalnote",
+    "user_type": "usertype rentaltype paymenttype contracttype",
 }
 SYN = {k: canon for canon, words in SYNONYMS.items() for k in words.split()}
 
 
 def _key(name):
     return re.sub(r"[^0-9a-zA-Z\u1780-\u17ff]+", "", str(name)).lower()
-SOON = 15  # days: above this a unit is "safe" (green)
+DUE_MAX = 6          # days left: 0..6  -> "Due" (red)            (display only)
+APPROACH_MAX = 29    # days left: 7..29 -> "Approaching" (amber)   >= 30 -> "Safe" (green)
+RENTAL_DEFAULT = 30  # rental units get their message this many days (1 month) before expiry
+
+
+def norm_utype(v):
+    """user_type cell -> 'rental' or 'paid_off' (empty / anything else = paid_off)."""
+    s = str(v or "").strip()
+    return "rental" if re.sub(r"[^a-z]", "", s.lower()).startswith("rent") or "ជួល" in s else "paid_off"
 
 
 def _read(path):
@@ -80,6 +89,7 @@ def _read(path):
         d[rest] = pd.to_datetime(raw[rest], dayfirst=True, errors="coerce", format="mixed")
     df["expiry_date"] = d.dt.strftime("%Y-%m-%d").fillna("")
     df["type"] = df["type"].replace("", "Normal")
+    df["user_type"] = df["user_type"].map(norm_utype)
     df["status"] = df["status"].map(lambda v: "Sent" if v.lower() == "sent" else "")
     warns = []
     for label, mask in (("have no valid expiry date", df["expiry_date"] == ""),):   # no Username/ID is allowed: the admin fills it in
@@ -221,9 +231,9 @@ class ExcelManager:
             pass
 
     # ---- data ----
-    def records(self, normal_days, company_days, today=None):
+    def records(self, normal_days, company_days, rental_days=RENTAL_DEFAULT, today=None):
         today = today or today_local()
-        key = (normal_days, company_days, today)
+        key = (normal_days, company_days, rental_days, today)
         with self.lock:
             hit = self._cache.get(key)
             if hit is not None:
@@ -231,17 +241,23 @@ class ExcelManager:
             df = self._load()
             exp = pd.to_datetime(df["expiry_date"], errors="coerce")
             days = (exp - pd.Timestamp(today)).dt.days
-            thr = np.where(df["type"].str.lower().str.startswith("comp"), company_days, normal_days)
+            utype = (df["user_type"] if "user_type" in df.columns else pd.Series([""] * len(df))).map(norm_utype)
+            is_rental = (utype == "rental").to_numpy()
+            # WHEN a message is sent: paid_off = Normal / Company days, rental = 1 month before expiry
+            thr = np.where(is_rental, rental_days, np.where(df["type"].str.lower().str.startswith("comp"), company_days, normal_days))
             sent = (df["status"].str.lower() == "sent").to_numpy()
             d = days.to_numpy(dtype="float64", na_value=np.nan)
-            state = np.select([sent, np.isnan(d), d < 0, d <= thr, d <= np.maximum(SOON, thr)],
+            # WHAT the dashboard shows: Due 0..6, Approaching 7..29, Safe >= 30 (same for everybody)
+            state = np.select([sent, np.isnan(d), d < 0, d <= DUE_MAX, d <= APPROACH_MAX],
                               ["sent", "invalid", "expired", "due", "approaching"], default="safe")
+            ok = ~sent & ~np.isnan(d) & (d >= 0) & (d <= thr)                    # eligible for sending now
             names = df["name"] if "name" in df.columns else [""] * len(df)  # working file saved before "name" existed
             notes = df["note"] if "note" in df.columns else [""] * len(df)
-            out = [dict(id=i, user=u, name=nm, type=t or "Normal", plate=p, imei=m, expiry=e,
-                        days=(None if x != x else int(x)), state=s, sent_at=a, note=no)
-                   for i, u, nm, no, t, p, m, e, x, s, a in zip(range(len(df)), df["user"], names, notes, df["type"], df["plate"], df["imei"],
-                                                                df["expiry_date"], d.tolist(), state.tolist(), df["sent_at"])]
+            out = [dict(id=i, user=u, name=nm, type=t or "Normal", user_type=ut, plate=p, imei=m, expiry=e,
+                        days=(None if x != x else int(x)), state=s, sent_at=a, note=no, thr=int(th), eligible=bool(o))
+                   for i, u, nm, no, t, ut, p, m, e, x, s, a, th, o in zip(
+                       range(len(df)), df["user"], names, notes, df["type"], utype, df["plate"], df["imei"],
+                       df["expiry_date"], d.tolist(), state.tolist(), df["sent_at"], thr.tolist(), ok.tolist())]
             self._cache = {key: out}
             return out
 
@@ -318,7 +334,9 @@ class ExcelManager:
             if d.empty:
                 return []
             g = d.assign(has=(d["user"].str.strip() != "")).groupby("name").agg(plates=("plate", "size"), with_user=("has", "sum"))
-            return [dict(name=n, plates=int(r.plates), with_user=int(r.with_user)) for n, r in g.iterrows()][:limit]
+            ids = {n: sorted({u.strip() for u in grp["user"] if u.strip()}) for n, grp in d.groupby("name")}   # current Username/ID(s)
+            return [dict(name=n, plates=int(r.plates), with_user=int(r.with_user), ids=ids.get(n, []))
+                    for n, r in g.iterrows()][:limit]
 
     def merge_from_upload(self, file_storage):
         """Add the rows of a new file to the CURRENT list. A row whose IMEI is already in the list (or appears
@@ -379,7 +397,8 @@ class ExcelManager:
     @staticmethod
     def export(rows):
         """Same columns the importer needs (so the file can be imported again) + info columns that import ignores."""
-        df = pd.DataFrame([{"user": safe_cell(r["user"]), "name": safe_cell(r.get("name", "")), "type": safe_cell(r["type"]), "plate": safe_cell(r["plate"]),
+        df = pd.DataFrame([{"user": safe_cell(r["user"]), "name": safe_cell(r.get("name", "")), "type": safe_cell(r["type"]),
+                            "user_type": r.get("user_type", "paid_off"), "plate": safe_cell(r["plate"]),
                             "imei": safe_cell(r["imei"]), "expiry_date": r["expiry"],
                             "status": "Sent" if r["state"] == "sent" else "", "sent_at": safe_cell(r["sent_at"]),
                             "days_remaining": r["days"], "state": r["state"]} for r in rows],
@@ -392,8 +411,9 @@ class ExcelManager:
     @staticmethod
     def template():
         nxt = (today_local() + timedelta(days=10)).isoformat()
-        df = pd.DataFrame([["@username", "Normal", "ភ្នំពេញ 2A-1234", "862012345678901", nxt, "", "", "WL112", ""],
-                           ["123456789", "Company", "សៀមរាប 1C-4321", "862012345678902", nxt, "", "", "WL113", ""]], columns=ALL_COLS)
+        df = pd.DataFrame([["@username", "Normal", "paid_off", "ភ្នំពេញ 2A-1234", "862012345678901", nxt, "", "", "WL112", ""],
+                           ["123456789", "Company", "paid_off", "សៀមរាប 1C-4321", "862012345678902", nxt, "", "", "WL113", ""],
+                           ["", "Normal", "rental", "កណ្តាល 3B-5555", "862012345678903", nxt, "", "", "WL114", ""]], columns=ALL_COLS)
         buf = io.BytesIO()
         df.to_excel(buf, index=False, engine="openpyxl")
         buf.seek(0)
