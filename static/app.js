@@ -427,8 +427,9 @@
   let iTimer; for (const id of ["#rImei", "#rUser"]) $(id).addEventListener("input", () => { clearTimeout(iTimer); iTimer = setTimeout(loadReport, 350); });
 
   // ---------- report master -> detail (Paid Off / Rental) ----------
-  function fillUnits(body, emptyEl, countEl, list) {
-    body.replaceChildren(); emptyEl.hidden = list.length > 0; countEl.textContent = `(${list.length.toLocaleString()})`;
+  function fillUnits(body, emptyEl, countEl, sec) {
+    const list = sec.rows;
+    body.replaceChildren(); emptyEl.hidden = list.length > 0; countEl.textContent = `· Client (Count): ${sec.clients.toLocaleString()} · ${list.length.toLocaleString()} plate(s)`;
     for (const u of list) {
       const tr = document.createElement("tr"), who = el("div", "", u.name || u.user || "—"); if (u.name && u.user) who.append(el("small", "note", u.user));
       td(tr, who); td(tr, u.plate || "—"); td(tr, el("span", "mono", u.imei || "—")); td(tr, fmt(u.expiry));

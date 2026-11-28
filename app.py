@@ -39,11 +39,12 @@ CFG = dict(
     SESSION_STRING=os.getenv("TELEGRAM_SESSION_STRING", "").strip(),  # alternative to the .session file (cloud hosting)
 )
 os.makedirs(os.path.dirname(CFG["SESSION"]), exist_ok=True)
-if len(os.getenv("SECRET_KEY", "")) < 32:
-    sys.exit("Set a 32+ char SECRET_KEY in .env (see .env.example).")
+if len(os.getenv("SECRET_KEY", "")) < 32 or len(set(os.getenv("SECRET_KEY", ""))) < 8:
+    sys.exit("Set a random SECRET_KEY of 32+ characters in .env (see .env.example). Make one with: python -c \"import secrets;print(secrets.token_hex(32))\"")
 
 from excel_manager import RENTAL_DEFAULT, ExcelManager, norm_utype, safe_cell  # noqa: E402
 from database import FileStore, History, UserStore, data_dir, database_url, make_engine  # noqa: E402
+from security import Throttle, apply_headers, check_upload, password_problem, pw_stamp  # noqa: E402
 from telegram_bot import CHUNK, LogBuffer, TelegramBot, group_rows  # noqa: E402
 from timeutil import now as now_local, today as today_local  # noqa: E402
 
@@ -56,6 +57,7 @@ app.config.update(
     MAX_CONTENT_LENGTH=10 * 1024 * 1024,                # reject uploads > 10 MB
     SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Strict",
     SESSION_COOKIE_SECURE=os.getenv("COOKIE_SECURE") == "1",
+    SESSION_COOKIE_NAME="__Host-session" if os.getenv("COOKIE_SECURE") == "1" else "session",   # __Host-: https only, no Domain, path /
     PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),   # idle logout
 )
 DB_URL = database_url(BASE)
@@ -75,7 +77,8 @@ if excel.restore_if_missing():
     print("client list restored from the database")
 logs = LogBuffer()
 bot = TelegramBot(CFG, excel, logs, history)
-FAILS = {}  # ip -> [count, locked_until]  (login brute-force throttle)
+IP_THROTTLE = Throttle(limit=5, window=900, lock=300)       # 5 wrong passwords from one address -> 5 min lock
+USER_THROTTLE = Throttle(limit=12, window=900, lock=300)    # slow guessing spread over many addresses
 DUMMY_HASH = generate_password_hash("not-a-real-password", method="scrypt")  # keeps login timing equal for unknown users
 USER_RE = re.compile(r"^[a-z0-9_.-]{3,32}$")
 
@@ -129,15 +132,7 @@ def guard():
 
 @app.after_request
 def headers(r):
-    r.headers["Content-Security-Policy"] = ("default-src 'self'; script-src 'self'; style-src 'self'; "
-        "img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
-    r.headers["X-Content-Type-Options"] = "nosniff"
-    r.headers["X-Frame-Options"] = "DENY"
-    r.headers["Referrer-Policy"] = "no-referrer"
-    r.headers["Cache-Control"] = "no-store"
-    if app.config["SESSION_COOKIE_SECURE"]:
-        r.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    return r
+    return apply_headers(r, app.config["SESSION_COOKIE_SECURE"])
 
 
 def login_required(f):
@@ -147,6 +142,10 @@ def login_required(f):
         if not u or not u["is_active"]:  # a disabled/deleted user is signed out immediately
             session.clear()
             return (jsonify(error="Not signed in"), 401) if request.path.startswith("/api/") \
+                else redirect(url_for("login"))
+        if session.get("pw") != pw_stamp(u["password_hash"]):   # password was changed since this sign-in -> sign in again
+            session.clear()
+            return (jsonify(error="Signed out: the password changed. Sign in again."), 401) if request.path.startswith("/api/") \
                 else redirect(url_for("login"))
         g.user, g.perms = u, perms_of(u)
         return f(*a, **k)
@@ -175,13 +174,14 @@ def healthz():  # for uptime monitors / deployment checks
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    err, ip = None, request.remote_addr
+    err, ip = None, request.remote_addr or "?"
     if request.method == "POST":
-        count, until = FAILS.get(ip, [0, 0])
-        if time.time() < until:
-            err = "Too many attempts. Try again in a few minutes."
+        name = request.form.get("username", "").strip().lower()[:64]
+        wait = max(IP_THROTTLE.wait(ip), USER_THROTTLE.wait(name))
+        if wait:
+            err = f"Too many attempts. Try again in {max(1, wait // 60 + (1 if wait % 60 else 0))} minute(s)."
         else:
-            u = accounts.get_by_name(request.form.get("username", "").strip().lower()[:64])
+            u = accounts.get_by_name(name)
             try:
                 pass_ok = check_password_hash(u["password_hash"] if u else DUMMY_HASH,
                                               request.form.get("password", ""))  # always run
@@ -189,14 +189,17 @@ def login():
                 pass_ok = False
                 logs.add("error", "A stored password hash is invalid. Reset it: python scripts/create_user.py <name> --reset")
             if u and u["is_active"] and pass_ok:
-                FAILS.pop(ip, None)
+                IP_THROTTLE.ok(ip)
+                USER_THROTTLE.ok(name)
                 keep = secrets.token_hex(16)
                 session.clear()                       # new session id after login
-                session.update(uid=u["id"], csrf=keep)
+                session.update(uid=u["id"], csrf=keep, pw=pw_stamp(u["password_hash"]))
                 accounts.touch_login(u["id"])
+                logs.add("info", f"{u['username']} signed in.")
                 return redirect(url_for("index"))
-            count += 1
-            FAILS[ip] = [count, time.time() + 300 if count >= 5 else 0]
+            IP_THROTTLE.fail(ip)
+            USER_THROTTLE.fail(name)
+            logs.add("warn", f"Failed sign-in attempt for '{re.sub(r'[^a-z0-9_.-]', '?', name)[:32]}'.")
             time.sleep(1)                             # slow down guessing
             err = "Wrong username or password."
     return render_template("login.html", csrf=session["csrf"], error=err)
@@ -206,6 +209,14 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.errorhandler(500)
+def server_error(e):
+    app.logger.exception("Unhandled error")           # details stay in the server log, never in the response
+    if request.path.startswith("/api/"):
+        return jsonify(error="Server error. Try again; if it repeats check the server log."), 500
+    return "Server error", 500
 
 
 @app.errorhandler(400)
@@ -282,11 +293,7 @@ def clean_phone(v):
 
 
 def check_password(pw, username=""):
-    if not (8 <= len(pw) <= 128):
-        return "Password must be 8-128 characters."
-    if pw.lower() == username.lower():
-        return "Password must not be the same as the username."
-    return None
+    return password_problem(pw, username)
 
 
 # ---------- pages & API ----------
@@ -437,6 +444,8 @@ def upload():
     f = request.files.get("file")
     if not f or not f.filename.lower().endswith((".xlsx", ".xlsm", ".csv")):
         return jsonify(error="Please choose an Excel (.xlsx, .xlsm) or .csv file."), 400
+    if (bad := check_upload(f)):
+        return jsonify(error=bad), 400
     if bot.running:
         return jsonify(error="Wait for the running batch to finish."), 409
     merge = request.args.get("mode", "merge") != "replace"       # default: ADD to the current list, skip duplicate IMEI
@@ -606,7 +615,11 @@ def report_detail():
     if not day or not batch:
         return jsonify(error="Missing day / batch."), 400
     units = [unit_view(u) for u in history.batch_units(day, batch, request.args.get("imei", ""), request.args.get("ruser", ""))]
-    return jsonify(paid_off=[u for u in units if u["user_type"] != "rental"], rental=[u for u in units if u["user_type"] == "rental"])
+
+    def section(items):                                  # Client (Count) = how many different user accounts got a message
+        return dict(rows=items, clients=len({u["user"] for u in items if u["status"] == "sent"}))
+    return jsonify(paid_off=section([u for u in units if u["user_type"] != "rental"]),
+                   rental=section([u for u in units if u["user_type"] == "rental"]))
 
 
 @app.get("/api/report/change_detail")
@@ -653,6 +666,13 @@ def report_export():
 
 
 # ---------- admin users ----------
+def protected(u):
+    """Stops privilege escalation: only the main admin may touch the main admin or another user-manager."""
+    if not is_main_admin(g.user) and u["id"] != g.user["id"] and (is_main_admin(u) or "users" in perms_of(u)):
+        return jsonify(error="Only the main admin can change this account."), 403
+    return None
+
+
 def public_user(u):
     return dict(id=u["id"], username=u["username"], active=bool(u["is_active"]), created_at=u["created_at"],
                 last_login=u["last_login"] or "", me=u["id"] == g.user["id"], main=is_main_admin(u),
@@ -679,6 +699,8 @@ def users_add():
     if accounts.get_by_name(name):
         return jsonify(error="That username already exists."), 409
     perms = clean_perms(p.get("permissions")) if "permissions" in p else DEFAULT_PERMS
+    if "users" in perms and not is_main_admin(g.user):
+        return jsonify(error="Only the main admin can create another Admin."), 403
     accounts.create(name, generate_password_hash(pw, method="scrypt"), ",".join(perms))
     logs.add("info", f"{g.user['username']} created user {name} (permissions: {', '.join(perms) or 'none'}).")
     return jsonify(ok=True)
@@ -692,9 +714,14 @@ def users_password(uid):
     pw = str((request.get_json(silent=True) or {}).get("password", ""))
     if not u:
         return jsonify(error="User not found."), 404
+    if (deny := protected(u)):
+        return deny
     if (msg := check_password(pw, u["username"])):
         return jsonify(error=msg), 400
-    accounts.set_password(uid, generate_password_hash(pw, method="scrypt"))
+    new_hash = generate_password_hash(pw, method="scrypt")
+    accounts.set_password(uid, new_hash)
+    if uid == g.user["id"]:
+        session["pw"] = pw_stamp(new_hash)             # keep MY session; every other session of this user is signed out
     logs.add("info", f"{g.user['username']} changed the password of {u['username']}.")
     return jsonify(ok=True)
 
@@ -709,6 +736,10 @@ def users_permissions(uid):
     if is_main_admin(u):
         return jsonify(error=f"'{u['username']}' is the main admin and always has every permission."), 400
     perms = clean_perms((request.get_json(silent=True) or {}).get("permissions"))
+    if (deny := protected(u)):
+        return deny
+    if "users" in perms and "users" not in perms_of(u) and not is_main_admin(g.user):
+        return jsonify(error="Only the main admin can make someone an Admin."), 403
     if uid == g.user["id"] and "users" not in perms:
         return jsonify(error="You cannot remove your own 'manage users' permission."), 400
     accounts.set_permissions(uid, ",".join(perms))
@@ -725,6 +756,8 @@ def users_active(uid):
         return jsonify(error="User not found."), 404
     if uid == g.user["id"]:
         return jsonify(error="You cannot disable your own account."), 400
+    if (deny := protected(u)):
+        return deny
     active = bool((request.get_json(silent=True) or {}).get("active"))
     accounts.set_active(uid, active)
     logs.add("info", f"{g.user['username']} {'enabled' if active else 'disabled'} {u['username']}.")
@@ -740,6 +773,8 @@ def users_delete(uid):
         return jsonify(error="User not found."), 404
     if uid == g.user["id"]:
         return jsonify(error="You cannot delete your own account."), 400
+    if (deny := protected(u)):
+        return deny
     accounts.delete(uid)
     logs.add("info", f"{g.user['username']} deleted user {u['username']}.")
     return jsonify(ok=True)
