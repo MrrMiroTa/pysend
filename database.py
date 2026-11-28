@@ -20,6 +20,7 @@ users = Table(
     Column("is_active", Boolean, nullable=False, default=True),
     Column("created_at", String(19), default=""),
     Column("last_login", String(19), default=""),
+    Column("permissions", String(400)),                         # "send,import,..." ; NULL = not set yet (old accounts)
 )
 send_log = Table(
     "send_log", md,
@@ -49,6 +50,8 @@ send_unit_log = Table(                                          # the Report, on
     Column("imei", String(64)),
     Column("expiry", String(32)),
     Column("status", String(10), index=True),                   # sent / failed / skipped
+    Column("user_type", String(12)),                            # paid_off / rental
+    Column("kind", String(8)),                                  # manual / auto
 )
 
 change_log = Table(                                             # what an admin changed (expiry date, Username/ID, import)
@@ -125,6 +128,11 @@ def make_engine(url):
             c.execute(text("UPDATE send_log SET day=SUBSTR(ts,1,10)"))
         if "sent_by" not in cols:
             c.execute(text("ALTER TABLE send_log ADD COLUMN sent_by VARCHAR(64)"))
+        for table, col, ddl in (("send_unit_log", "user_type", "VARCHAR(12)"), ("send_unit_log", "kind", "VARCHAR(8)"),
+                                ("users", "permissions", "VARCHAR(400)")):
+            have = {x["name"] for x in inspect(eng).get_columns(table)}
+            if col not in have:
+                c.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
     return eng
 
 
@@ -156,10 +164,11 @@ class UserStore:
         with self.e.connect() as c:
             return [dict(r) for r in c.execute(select(users).order_by(users.c.id)).mappings()]
 
-    def create(self, username, pw_hash):
+    def create(self, username, pw_hash, permissions=None):
         with self.e.begin() as c:
             return c.execute(insert(users).values(username=username, password_hash=pw_hash, is_active=True,
-                                                  created_at=_stamp(), last_login="")).inserted_primary_key[0]
+                                                  created_at=_stamp(), last_login="",
+                                                  permissions=permissions)).inserted_primary_key[0]
 
     def _set(self, uid, **vals):
         with self.e.begin() as c:
@@ -168,6 +177,7 @@ class UserStore:
     def set_password(self, uid, pw_hash): self._set(uid, password_hash=pw_hash)
     def set_active(self, uid, active): self._set(uid, is_active=bool(active))
     def touch_login(self, uid): self._set(uid, last_login=_stamp())
+    def set_permissions(self, uid, perms): self._set(uid, permissions=perms)
 
     def delete(self, uid):
         with self.e.begin() as c:
@@ -197,7 +207,7 @@ class History:
     def __init__(self, engine):
         self.e = engine
 
-    def add(self, ts, batch, user, units, plates, status, reason="", detail="", sent_by="", unit_rows=()):
+    def add(self, ts, batch, user, units, plates, status, reason="", detail="", sent_by="", unit_rows=(), kind="manual"):
         with self.e.begin() as c:
             c.execute(insert(send_log).values(
                 ts=ts, day=ts[:10], batch=batch, user=user[:190], units=units, plates=plates[:400], status=status,
@@ -206,7 +216,8 @@ class History:
                 c.execute(insert(send_unit_log), [dict(
                     ts=ts, day=ts[:10], batch=batch, user=user[:190], name=(u.get("name") or "")[:190],
                     plate=(u.get("plate") or "")[:190], imei=(u.get("imei") or "")[:64],
-                    expiry=(u.get("expiry") or "")[:32], status=status) for u in unit_rows])
+                    expiry=(u.get("expiry") or "")[:32], status=status,
+                    user_type=(u.get("user_type") or "paid_off")[:12], kind=kind[:8]) for u in unit_rows])
         try:
             self.purge(date.fromisoformat(ts[:10]))                 # every new day pushes the oldest day out
         except Exception:
@@ -254,6 +265,61 @@ class History:
                             change_log.c.new_value.ilike(like)))
         with self.e.connect() as c:
             return [dict(r) for r in c.execute(s).mappings()]
+
+    def change_detail(self, ts, actor, action, limit=5000):
+        """Every plate of ONE admin change (same time, admin and action)."""
+        s = (select(change_log).where(change_log.c.ts == ts, change_log.c.actor == actor, change_log.c.action == action)
+             .order_by(change_log.c.id).limit(limit))
+        with self.e.connect() as c:
+            return [dict(r) for r in c.execute(s).mappings()]
+
+    @staticmethod
+    def _unit_where(q, d_from, d_to, imei="", user=""):
+        if d_from:
+            q = q.where(send_unit_log.c.day >= d_from)
+        if d_to:
+            q = q.where(send_unit_log.c.day <= d_to)
+        imei = re.sub(r"[%_\\\s]", "", (imei or ""))[:40]
+        if imei:
+            q = q.where(send_unit_log.c.imei.ilike(f"%{imei}%"))
+        user = re.sub(r"[%_\\]", "", (user or "").strip())[:80]
+        if user:
+            like = f"%{user}%"
+            q = q.where(or_(send_unit_log.c.name.ilike(like), send_unit_log.c.user.ilike(like), send_unit_log.c.plate.ilike(like)))
+        return q
+
+    def batches(self, d_from=None, d_to=None, imei="", user="", limit=100000):
+        """Report master: one entry per send run (batch). Plates/clients are counted from the units that match the filter."""
+        q = self._unit_where(select(send_unit_log).order_by(send_unit_log.c.id.desc()).limit(limit), d_from, d_to, imei, user)
+        with self.e.connect() as c:
+            rows = [dict(r) for r in c.execute(q).mappings()]
+        out = {}
+        for r in rows:
+            b = out.setdefault((r["day"], r["batch"]), dict(day=r["day"], batch=r["batch"], ts=r["ts"], kind=r.get("kind") or "manual",
+                                                            sent=0, failed=0, skipped=0, paid_off=0, rental=0, clients=set(), lo=None, hi=None))
+            b[r["status"]] = b.get(r["status"], 0) + 1
+            b["ts"] = min(b["ts"], r["ts"])
+            if r["status"] == "sent":
+                b["clients"].add(r["user"])
+                b["rental" if r.get("user_type") == "rental" else "paid_off"] += 1
+            try:
+                d = (date.fromisoformat(r["expiry"][:10]) - date.fromisoformat(r["day"])).days
+                b["lo"] = d if b["lo"] is None else min(b["lo"], d)
+                b["hi"] = d if b["hi"] is None else max(b["hi"], d)
+            except (ValueError, TypeError):
+                pass
+        res = []
+        for b in sorted(out.values(), key=lambda x: x["ts"], reverse=True):
+            b["clients"] = len(b["clients"])
+            res.append(b)
+        return res
+
+    def batch_units(self, day, batch, imei="", user=""):
+        """Report detail of one send run."""
+        q = select(send_unit_log).where(send_unit_log.c.day == day, send_unit_log.c.batch == batch).order_by(send_unit_log.c.id)
+        q = self._unit_where(q, None, None, imei, user)
+        with self.e.connect() as c:
+            return [dict(r) for r in c.execute(q).mappings()]
 
     def unit_rows(self, status="all", d_from=None, d_to=None, limit=100000):
         q = select(send_unit_log).order_by(send_unit_log.c.id.desc()).limit(limit)

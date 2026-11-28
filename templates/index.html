@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex">
 <meta name="color-scheme" content="light dark">
 <meta name="csrf" content="{{ csrf }}">
+<meta name="perms" content="{{ perms }}">
 <title>GPS Expiry Notifier</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="icon" href="../static/assets/icon.png">
@@ -61,8 +62,8 @@
       <div><b>GPS Expiry</b><span>Notifier</span></div></div>
     <nav class="nav" role="tablist" aria-label="Main">
       <button class="tab on" id="tabMain" role="tab" type="button" data-tab="main"><svg class="ic"><use href="#i-layout-dashboard"/></svg><span><em>ផ្ទាំងគ្រប់គ្រង</em><small>Dashboard</small></span></button>
-      <button class="tab" id="tabReport" role="tab" type="button" data-tab="report"><svg class="ic"><use href="#i-chart-column"/></svg><span><em>របាយការណ៍</em><small>Report</small></span></button>
-      <button class="tab" id="tabUsers" role="tab" type="button" data-tab="users"><svg class="ic"><use href="#i-users"/></svg><span><em>អ្នកប្រើប្រាស់</em><small>Users</small></span></button>
+      <button class="tab" id="tabReport" data-perm="report" role="tab" type="button" data-tab="report"><svg class="ic"><use href="#i-chart-column"/></svg><span><em>របាយការណ៍</em><small>Report</small></span></button>
+      <button class="tab" id="tabUsers" data-perm="users" role="tab" type="button" data-tab="users"><svg class="ic"><use href="#i-users"/></svg><span><em>អ្នកប្រើប្រាស់</em><small>Users</small></span></button>
     </nav>
     <div class="side-note"><svg class="ic"><use href="#i-shield-check"/></svg><p>One message per client, with a table of all their units.</p></div>
   </aside>
@@ -73,8 +74,8 @@
       <div class="top-right">
         <span class="filechip" title="Current client list"><svg class="ic"><use href="#i-file-spreadsheet"/></svg><span id="fileName">No file loaded</span></span>
         <button id="dlTemplate" class="btn icon" type="button" title="Download the Excel template (the 7 required columns)" aria-label="Download Excel template"><svg class="ic"><use href="#i-file-spreadsheet"/></svg></button>
-        <button id="pick" class="btn" type="button" title="Add the rows of a new file to the current list (duplicate IMEI are skipped)"><svg class="ic"><use href="#i-upload"/></svg><span class="lbl-sm">Browse file</span></button>
-        <button id="pickReplace" class="btn" type="button" title="Replace the whole current list with a new file"><svg class="ic"><use href="#i-file-spreadsheet"/></svg><span class="lbl-sm">Replace all</span></button>
+        <button id="pick" class="btn" type="button" data-perm="import" title="Add the rows of a new file to the current list (duplicate IMEI are skipped)"><svg class="ic"><use href="#i-upload"/></svg><span class="lbl-sm">Browse file</span></button>
+        <button id="pickReplace" class="btn" type="button" data-perm="import" title="Replace the whole current list with a new file"><svg class="ic"><use href="#i-file-spreadsheet"/></svg><span class="lbl-sm">Replace all</span></button>
         <input id="file" type="file" accept=".xlsx,.xlsm,.csv" hidden>
         <button id="theme" class="btn icon" type="button" aria-label="Toggle dark / light"><svg class="ic when-light"><use href="#i-moon"/></svg><svg class="ic when-dark"><use href="#i-sun"/></svg></button>
         <span class="me" title="Signed in"><span class="avatar">{{ username[:1]|upper }}</span><span class="me-name">{{ username }}</span></span>
@@ -93,13 +94,13 @@
 
         <section class="stats">
           <div class="card stat"><span class="chip c-accent"><svg class="ic"><use href="#i-map-pin"/></svg></span>
-            <div><span class="lbl">ឧបករណ៍សរុប</span><b id="sUnits">0</b><span class="sub"><span id="sUsers">0</span> clients · total units</span></div></div>
-          <div class="card stat"><span class="chip c-red"><svg class="ic"><use href="#i-circle-alert"/></svg></span>
-            <div><span class="lbl">ជិតផុត ≤ <span id="nLbl">7</span> ថ្ងៃ</span><b id="sNormal">0</b><span class="sub">Critical priority</span></div></div>
+            <div><span class="lbl">ឧបករណ៍សរុប</span><b id="sUnits">0</b><span class="sub"><span id="sUsers">0</span> clients · <span id="sPaid">0</span> paid off · <span id="sRental">0</span> rental</span></div></div>
+          <div class="card stat"><span class="chip c-green"><svg class="ic"><use href="#i-circle-check"/></svg></span>
+            <div><span class="lbl">មិនទាន់ដល់ពេល · Safe ≥ 30</span><b id="sSafe">0</b><span class="sub">ថ្ងៃនៅសល់ ≥ 30</span></div></div>
           <div class="card stat"><span class="chip c-amber"><svg class="ic"><use href="#i-clock"/></svg></span>
-            <div><span class="lbl">ជិតផុត ≤ <span id="cLbl">14</span> ថ្ងៃ</span><b id="sCompany">0</b><span class="sub">High priority</span></div></div>
-          <div class="card stat"><span class="chip c-green"><svg class="ic"><use href="#i-send"/></svg></span>
-            <div><span class="lbl">បានផ្ញើរួច</span><b id="sSent">0</b><span class="sub">Notified · <span id="sExpired">0</span> expired</span></div></div>
+            <div><span class="lbl">ជិតដល់ពេល · Approaching 7–29</span><b id="sApp">0</b><span class="sub">ថ្ងៃនៅសល់ 7 ដល់ 29</span></div></div>
+          <div class="card stat"><span class="chip c-red"><svg class="ic"><use href="#i-circle-alert"/></svg></span>
+            <div><span class="lbl">ជិតផុត · Due ≤ 6</span><b id="sDue">0</b><span class="sub"><span id="sExpired">0</span> expired · <span id="sSent">0</span> sent</span></div></div>
         </section>
 
         <section class="grid2">
@@ -110,11 +111,12 @@
             <div class="form-grid">
               <label>Normal (ថ្ងៃ)<input id="normal" type="number" min="1" max="365" value="7"></label>
               <label>Company (ថ្ងៃ)<input id="company" type="number" min="1" max="365" value="14"></label>
+              <label>Rental (ថ្ងៃ)<input id="rental" type="number" min="1" max="365" value="{{ rental_days }}"></label>
               <label>Max / run<input id="limit" type="number" min="1" max="{{ max_run }}" value="{{ max_run }}"></label>
               <label>Method<select id="method"><option>Telethon account</option></select></label>
               <label class="span2">លេខទំនាក់ទំនងក្នុងសារ (Contact phone)<input id="phone" value="{{ phone }}" maxlength="30" inputmode="tel" autocomplete="off"></label>
             </div>
-            <p class="hint muted small">Units within the Normal / Company number of days are treated as <b>due</b>.</p></div>
+            <p class="hint muted small"><b>ច្បាប់ផ្ញើ · Send rule:</b> <i>paid_off</i> → Normal / Company days · <i>rental</i> → Rental days (1 month). Ready to send now: <b id="sReady">0</b> <span class="muted">(+<span id="sResend">0</span> already sent)</span></p></div>
         </section>
 
         <section class="card toolbar">
@@ -122,25 +124,41 @@
             <input id="q" type="search" placeholder="ស្វែងរក Name (WL012), User, ស្លាកលេខ, IMEI…" autocomplete="off"></label>
           <div class="pills" role="radiogroup" aria-label="Filter">
             <label><input type="radio" name="f" value="all" checked><span>ទាំងអស់ (All)</span></label>
-            <label><input type="radio" name="f" value="due_normal"><span>Due ≤ <i id="lblN">7</i> ថ្ងៃ</span></label>
-            <label><input type="radio" name="f" value="due_company"><span>Due ≤ <i id="lblC">14</i> ថ្ងៃ</span></label>
+            <label><input type="radio" name="f" value="safe"><span>Safe ≥30</span></label>
+            <label><input type="radio" name="f" value="approaching"><span>Approaching 7–29</span></label>
+            <label><input type="radio" name="f" value="due"><span>Due ≤6</span></label>
             <label><input type="radio" name="f" value="expired"><span>ផុតកំណត់ (Expired)</span></label>
             <label><input type="radio" name="f" value="sent"><span>បានផ្ញើ (Sent)</span></label>
+            <label><input type="radio" name="f" value="ready"><span>ត្រូវផ្ញើ (Ready)</span></label>
             <label><input type="radio" name="f" value="no_user"><span>គ្មាន ID (No ID) <i id="noIdCount"></i></span></label>
           </div>
+          <div class="range" role="group" aria-label="Days left">
+            <span class="muted small">នៅសល់ (ថ្ងៃ):</span>
+            <input id="dmin" type="number" min="-9999" max="9999" placeholder="1" aria-label="Days left from">
+            <span>→</span>
+            <input id="dmax" type="number" min="-9999" max="9999" placeholder="3" aria-label="Days left to">
+            <button id="rangeClear" class="btn sm" type="button" hidden>✕</button>
+            <b id="rangeInfo" class="rng-info"></b>
+            <select id="utype" aria-label="User type"><option value="all">ប្រភេទអ្នកប្រើ · All</option><option value="paid_off">Paid off</option><option value="rental">Rental</option></select>
+          </div>
           <div class="tools">
-            <button id="btnExp" class="btn sm" type="button" title="Set a new expiry date for the selected plates"><svg class="ic"><use href="#i-calendar"/></svg>បន្តសេវា · Update expiry</button>
-            <button id="btnFill" class="btn sm" type="button" title="Apply one Username/ID to every plate with a Name"><svg class="ic"><use href="#i-user-round"/></svg>បំពេញ ID · Fill Username/ID</button>
+            <button id="btnFill" class="btn sm" type="button" data-perm="fill_id" title="Apply one Username/ID to every plate with a Name"><svg class="ic"><use href="#i-user-round"/></svg>បំពេញ ID · Fill Username/ID</button>
+            <div class="more" data-perm="expiry">
+              <button id="btnMore" class="btn sm" type="button" aria-haspopup="true" aria-expanded="false">More ▾</button>
+              <div id="moreMenu" class="menu" hidden>
+                <button id="btnExp" class="btn sm" type="button" title="Set a new expiry date for the selected plates"><svg class="ic"><use href="#i-calendar"/></svg>បន្តសេវា · Update expiry</button>
+              </div>
+            </div>
           </div>
         </section>
 
         <section class="card tbl">
           <div class="scroll"><table>
-            <thead><tr><th class="ck"><input type="checkbox" id="all" aria-label="Select all"></th><th class="sortable" data-sort="user">USER / ID</th><th class="hide-sm sortable" data-sort="name">NAME</th><th class="hide-sm sortable" data-sort="type">ប្រភេទ</th><th class="sortable" data-sort="plate">ស្លាកលេខ</th><th class="hide-sm sortable" data-sort="imei">IMEI</th><th class="hide-sm sortable" data-sort="expiry">ថ្ងៃផុតកំណត់</th><th class="sortable" data-sort="days">នៅសល់</th><th class="sortable" data-sort="state">ស្ថានភាព</th></tr></thead>
+            <thead><tr><th class="ck"><input type="checkbox" id="all" aria-label="Select all"></th><th class="sortable" data-sort="user">USER / ID</th><th class="hide-sm sortable" data-sort="name">NAME</th><th class="hide-sm sortable" data-sort="type">ប្រភេទ</th><th class="hide-sm sortable" data-sort="user_type">USER TYPE</th><th class="sortable" data-sort="plate">ស្លាកលេខ</th><th class="hide-sm sortable" data-sort="imei">IMEI</th><th class="hide-sm sortable" data-sort="expiry">ថ្ងៃផុតកំណត់</th><th class="sortable" data-sort="days">នៅសល់</th><th class="sortable" data-sort="state">ស្ថានភាព</th></tr></thead>
             <tbody id="rows"></tbody></table>
             <div id="empty" class="empty" hidden><svg class="ic xl"><use href="#i-file-spreadsheet"/></svg><p id="emptyMsg"></p>
-              <p class="muted small">Required columns (first sheet, header in row 1): <b>type, plate, imei, expiry_date, status, sent_at</b>. Optional: <b>name</b> (e.g. WL112) and <b>user</b> (Username/ID, can be filled in later on this page). Other columns are ignored. Browsing a new file ADDS its rows to the current list; a row whose IMEI already exists is skipped.</p>
-              <div class="row-btns"><button id="pick2" class="btn primary" type="button"><svg class="ic"><use href="#i-upload"/></svg>Browse file</button>
+              <p class="muted small">Required columns (first sheet, header in row 1): <b>type, plate, imei, expiry_date, status, sent_at</b>. Optional: <b>user_type</b> (rental / paid_off, empty = paid_off), <b>name</b> (e.g. WL112) and <b>user</b> (Username/ID, can be filled in later on this page). Other columns are ignored. Browsing a new file ADDS its rows to the current list; a row whose IMEI already exists is skipped.</p>
+              <div class="row-btns"><button id="pick2" class="btn primary" type="button" data-perm="import"><svg class="ic"><use href="#i-upload"/></svg>Browse file</button>
               <button id="dlTemplate2" class="btn" type="button"><svg class="ic"><use href="#i-download"/></svg>Download template</button></div></div></div>
           <div class="tfoot"><span id="pageInfo">Showing 0 results</span>
             <span class="pager"><span id="selInfo"></span>
@@ -182,13 +200,24 @@
             <label><input type="radio" name="rf" value="failed"><span>បរាជ័យ (Failed)</span></label>
             <label><input type="radio" name="rf" value="skipped"><span>Skipped</span></label>
           </div>
-          <button id="rExport" class="btn push" type="button"><svg class="ic"><use href="#i-download"/></svg>Export report</button>
+          <label class="search"><svg class="ic"><use href="#i-search"/></svg>
+            <input id="rImei" type="search" placeholder="IMEI…" autocomplete="off" inputmode="numeric"></label>
+          <label class="search"><svg class="ic"><use href="#i-user-round"/></svg>
+            <input id="rUser" type="search" placeholder="User / Name…" autocomplete="off"></label>
+          <button id="rExport" class="btn push" data-perm="export" type="button"><svg class="ic"><use href="#i-download"/></svg>Export report</button>
         </section>
 
         <section class="card pad"><div class="card-h"><h2>លទ្ធផលតាមថ្ងៃ <small>Daily results</small></h2>
           <ul class="legend inline"><li><i class="sw seg-safe"></i>Success</li><li><i class="sw seg-expired"></i>Failed</li><li><i class="sw seg-approaching"></i>Skipped</li></ul></div>
           <svg id="dayChart" class="chart" viewBox="0 0 640 200" role="img" aria-label="Daily results" hidden></svg>
           <p id="chartEmpty" class="empty-s muted">No sends in this period.</p></section>
+
+        <section class="card tbl"><div class="sec-title">ទិន្នន័យមេ (Master) <span class="muted small">· one line per send · press Detail to see the plates</span></div>
+          <div class="scroll"><table>
+            <thead><tr><th>ថ្ងៃ (Date)</th><th>Type</th><th>Period <small class="muted">(ថ្ងៃនៅសល់)</small></th><th>Message Sent <small class="muted">(Plate Expire)</small></th><th>Client <small class="muted">(Count)</small></th><th></th></tr></thead>
+            <tbody id="mRows"></tbody></table>
+            <p id="mEmpty" class="empty-s muted" hidden>No sends for this filter.</p></div>
+          <div class="tfoot"><span>Showing <b id="mCount">0</b> sends</span></div></section>
 
         <section class="card tbl"><div class="sec-title">តាមថ្ងៃ (By day) <span class="muted small">· click a day to see its details</span></div>
           <div class="scroll"><table>
@@ -208,17 +237,17 @@
               <input id="cQ" type="search" placeholder="Name, plate, admin…" autocomplete="off"></label>
           </div>
           <div class="scroll"><table>
-            <thead><tr><th>ពេលវេលា</th><th>Admin</th><th>សកម្មភាព</th><th class="hide-sm">NAME</th><th>ស្លាកលេខ</th><th>មុន (Old)</th><th>ក្រោយ (New)</th></tr></thead>
+            <thead><tr><th>ពេលវេលា</th><th>Admin</th><th>សកម្មភាព</th><th class="hide-sm">NAME</th><th>ចំនួន (Plates)</th><th class="hide-sm">ការផ្លាស់ប្តូរ (Change)</th><th></th></tr></thead>
             <tbody id="cRows"></tbody></table>
             <p id="cEmpty" class="empty-s muted" hidden>No changes in this period.</p></div>
           <div class="tfoot"><span>Showing <b id="cCount">0</b> changes</span></div></section>
 
-        <section class="card tbl"><div class="sec-title">លម្អិត (Details)</div>
+        <details class="card tbl rdet"><summary class="sec-title">លម្អិតក្នុងមួយ Client (Per-client attempts &amp; failure reasons)</summary>
           <div class="scroll"><table>
             <thead><tr><th>ពេលវេលា</th><th>USER / ID</th><th class="hide-sm">ឧបករណ៍</th><th class="hide-sm">ស្លាកលេខ</th><th>ស្ថានភាព</th><th>មូលហេតុ (Reason)</th><th class="hide-sm">ផ្ញើដោយ</th></tr></thead>
             <tbody id="rRows"></tbody></table>
             <p id="rEmpty" class="empty-s muted" hidden>No report entries for this filter.</p></div>
-          <div class="tfoot"><span>Showing <b id="rCount">0</b> entries</span></div></section>
+          <div class="tfoot"><span>Showing <b id="rCount">0</b> entries</span></div></details>
       </div>
 
       <!-- ================= USERS ================= -->
@@ -226,7 +255,7 @@
         <section class="card toolbar"><div><b>Admin login users</b><p class="muted small nm">People who can sign in and send reminders.</p></div>
           <button id="uAdd" class="btn primary push" type="button"><svg class="ic"><use href="#i-plus"/></svg>Add user</button></section>
         <section class="card tbl"><div class="scroll"><table>
-          <thead><tr><th>Username</th><th>ស្ថានភាព</th><th class="hide-sm">បង្កើតនៅ</th><th class="hide-sm">ចូលចុងក្រោយ</th><th></th></tr></thead>
+          <thead><tr><th>Username</th><th>ស្ថានភាព</th><th>សិទ្ធិ (Permissions)</th><th class="hide-sm">បង្កើតនៅ</th><th class="hide-sm">ចូលចុងក្រោយ</th><th></th></tr></thead>
           <tbody id="uRows"></tbody></table></div></section>
       </div>
     </main>
@@ -234,21 +263,30 @@
 </div>
 
 <footer class="dock"><div class="dock-in">
-  <span class="state"><i id="dot" class="dot"></i><span id="progress">Ready to process</span><button id="viewRep" class="btn sm" type="button" hidden>View report</button></span>
+  <span class="state"><i id="dot" class="dot"></i><span id="progress">Ready to process</span><button id="viewRep" class="btn sm" type="button" data-perm="report" hidden>View report</button></span>
   <div class="dock-btns">
-    <label class="force" title="Send again even if already marked Sent"><input id="force" type="checkbox"><svg class="ic"><use href="#i-rotate-ccw"/></svg><span>បង្ខំផ្ញើម្តងទៀត <small>Force resend</small></span></label>
-    <button id="preview" class="btn" type="button"><svg class="ic"><use href="#i-eye"/></svg><span class="lbl-sm">Preview</span></button>
-    <button id="export" class="btn" type="button"><svg class="ic"><use href="#i-download"/></svg><span class="lbl-sm">Export</span></button>
-    <button id="stop" class="btn danger" type="button" disabled><svg class="ic"><use href="#i-square"/></svg><span class="lbl-sm">Stop</span></button>
-    <button id="sendSel" class="btn" type="button"><svg class="ic"><use href="#i-send"/></svg><span class="lbl-sm">ផ្ញើអ្នកដែលបានជ្រើស</span></button>
-    <button id="sendDue" class="btn primary" type="button"><svg class="ic"><use href="#i-send"/></svg><span>ផ្ញើ <small>Send all due</small></span></button>
+    <label class="force" data-perm="send" title="Send again even if already marked Sent"><input id="force" type="checkbox"><svg class="ic"><use href="#i-rotate-ccw"/></svg><span>បង្ខំផ្ញើម្តងទៀត <small>Force resend</small></span></label>
+    <button id="preview" class="btn" type="button" data-perm="send"><svg class="ic"><use href="#i-eye"/></svg><span class="lbl-sm">Preview</span></button>
+    <button id="export" class="btn" type="button" data-perm="export"><svg class="ic"><use href="#i-download"/></svg><span class="lbl-sm">Export</span></button>
+    <button id="stop" class="btn danger" type="button" data-perm="send" disabled><svg class="ic"><use href="#i-square"/></svg><span class="lbl-sm">Stop</span></button>
+    <button id="sendSel" class="btn" type="button" data-perm="send"><svg class="ic"><use href="#i-send"/></svg><span class="lbl-sm">ផ្ញើអ្នកដែលបានជ្រើស</span></button>
+    <button id="sendDue" class="btn primary" type="button" data-perm="send"><svg class="ic"><use href="#i-send"/></svg><span>ផ្ញើ <small>Send all due</small></span></button>
   </div></div></footer>
 
 <div id="toast" role="alert" hidden></div>
 
 <dialog id="uDlg"><h2 id="uTitle">Add user</h2>
   <label class="field">Username <input id="uName" maxlength="32" autocomplete="off"></label>
-  <label class="field">Password (8+ characters) <input id="uPass" type="password" maxlength="128" autocomplete="new-password"></label>
+  <label class="field" id="uPassRow">Password (8+ characters) <input id="uPass" type="password" maxlength="128" autocomplete="new-password"></label>
+  <fieldset id="uPerms" class="perms"><legend>សិទ្ធិ · Permissions</legend>
+    <label><input type="checkbox" value="report"><span>មើល Report <small>View report &amp; changes</small></span></label>
+    <label><input type="checkbox" value="import"><span>Import file <small>Browse / Replace all</small></span></label>
+    <label><input type="checkbox" value="send"><span>ផ្ញើសារ <small>Preview, Send, Stop</small></span></label>
+    <label><input type="checkbox" value="expiry"><span>បន្តសេវា <small>Update expiry date</small></span></label>
+    <label><input type="checkbox" value="fill_id"><span>បំពេញ ID <small>Fill Username/ID</small></span></label>
+    <label><input type="checkbox" value="export"><span>Export <small>Dashboard &amp; Report to Excel</small></span></label>
+    <label class="adm"><input type="checkbox" value="users"><span>Admin <small>Manage users &amp; permissions</small></span></label>
+  </fieldset>
   <p id="uErr" class="error" hidden></p>
   <div class="dlg-btns"><button id="uSave" class="btn primary" type="button">Save</button><button id="uCancel" class="btn" type="button">Cancel</button></div></dialog>
 
@@ -260,12 +298,24 @@
   <div class="dlg-btns"><button id="expSave" class="btn primary" type="button">Update</button><button id="expCancel" class="btn" type="button">Cancel</button></div></dialog>
 
 <dialog id="fillDlg"><h2>បំពេញ Username/ID · Fill by Name</h2>
-  <label class="field">Name (e.g. WL012) <input id="fillName" list="nameList" maxlength="190" autocomplete="off"></label>
+  <label class="field">Name (e.g. WL012) <input id="fillName" list="nameList" maxlength="190" autocomplete="off" placeholder="ចុចដើម្បីជ្រើស Name ដែលមិនទាន់មាន ID"></label>
   <datalist id="nameList"></datalist>
+  <label class="inl"><input id="fillAll" type="checkbox"> បង្ហាញ Name ដែលមាន ID រួច (ដើម្បីប្តូរ ID) · also list Names that already have an ID <b id="fillCount" class="muted"></b></label>
   <p class="muted" id="fillInfo">Type a Name. Every plate with this Name gets the Username/ID.</p>
   <label class="field">Username / ID <input id="fillUser" maxlength="64" placeholder="@username or 123456789" autocomplete="off"></label>
   <p id="fillErr" class="error" hidden></p>
   <div class="dlg-btns"><button id="fillSave" class="btn primary" type="button">Apply to all</button><button id="fillCancel" class="btn" type="button">Cancel</button></div></dialog>
+
+<dialog id="rdDlg" class="wide"><h2 id="rdTitle">Detail</h2><p class="muted small" id="rdInfo"></p>
+  <h3>Detail Paid Off <span class="muted" id="rdPaidN"></span></h3>
+  <div class="scroll sm"><table><thead><tr><th>User (Name)</th><th>Plate Number</th><th>IMEI</th><th>Expire Date</th><th>Status</th></tr></thead><tbody id="rdPaid"></tbody></table><p id="rdPaidE" class="empty-s muted" hidden>None</p></div>
+  <h3>Detail Rental <span class="muted" id="rdRentN"></span></h3>
+  <div class="scroll sm"><table><thead><tr><th>User (Name)</th><th>Plate Number</th><th>IMEI</th><th>Expire Date</th><th>Status</th></tr></thead><tbody id="rdRent"></tbody></table><p id="rdRentE" class="empty-s muted" hidden>None</p></div>
+  <div class="dlg-btns"><button id="rdClose" class="btn" type="button">Close</button></div></dialog>
+
+<dialog id="cdDlg" class="wide"><h2 id="cdTitle">Change detail</h2><p class="muted small" id="cdInfo"></p>
+  <div class="scroll sm"><table><thead><tr><th>NAME</th><th>Plate</th><th>មុន (Old)</th><th>ក្រោយ (New)</th></tr></thead><tbody id="cdRows"></tbody></table></div>
+  <div class="dlg-btns"><button id="cdClose" class="btn" type="button">Close</button></div></dialog>
 
 <dialog id="dlg"><h2>Message preview</h2><p class="muted" id="dlgTo"></p><img id="dlgImg" alt="Table preview" hidden><pre id="dlgText"></pre>
   <button id="dlgClose" class="btn" type="button">Close</button></dialog>
