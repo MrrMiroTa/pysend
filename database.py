@@ -103,6 +103,31 @@ def database_url(base):
     return url
 
 
+def _migrate(eng):
+    """Add columns that older databases lack. One short transaction per statement (never two connections at once),
+    and a retry when the host drops the connection (Neon closes idle SSL connections)."""
+    import time
+    wanted = (("send_log", "day", "VARCHAR(10)"), ("send_log", "sent_by", "VARCHAR(64)"),
+              ("send_unit_log", "user_type", "VARCHAR(12)"), ("send_unit_log", "kind", "VARCHAR(8)"),
+              ("users", "permissions", "VARCHAR(400)"))
+    for table, col, ddl in wanted:
+        for attempt in range(4):
+            try:
+                have = {x["name"] for x in inspect(eng).get_columns(table)}
+                if col in have:
+                    break
+                with eng.begin() as c:
+                    c.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+                    if (table, col) == ("send_log", "day"):
+                        c.execute(text("UPDATE send_log SET day=SUBSTR(ts,1,10)"))
+                break
+            except Exception:
+                if attempt == 3:
+                    raise
+                eng.dispose()                                   # drop dead pooled connections, then try again
+                time.sleep(1 + attempt)
+
+
 def make_engine(url):
     kw = dict(pool_pre_ping=True)
     sqlite = url.startswith("sqlite")
@@ -113,6 +138,8 @@ def make_engine(url):
             os.makedirs(os.path.dirname(os.path.abspath(db)), exist_ok=True)
     else:
         kw["pool_recycle"] = 1800
+        if url.startswith("postgresql"):                  # keep the SSL connection alive (Neon drops idle ones)
+            kw["connect_args"] = {"keepalives": 1, "keepalives_idle": 30, "keepalives_interval": 10, "keepalives_count": 5}
     eng = create_engine(url, **kw)
     if sqlite:
         @event.listens_for(eng, "connect")
@@ -121,18 +148,7 @@ def make_engine(url):
             cur.execute("PRAGMA journal_mode=WAL")
             cur.close()
     md.create_all(eng)
-    cols = {c["name"] for c in inspect(eng).get_columns("send_log")}  # upgrade tables from older versions
-    with eng.begin() as c:
-        if "day" not in cols:
-            c.execute(text("ALTER TABLE send_log ADD COLUMN day VARCHAR(10)"))
-            c.execute(text("UPDATE send_log SET day=SUBSTR(ts,1,10)"))
-        if "sent_by" not in cols:
-            c.execute(text("ALTER TABLE send_log ADD COLUMN sent_by VARCHAR(64)"))
-        for table, col, ddl in (("send_unit_log", "user_type", "VARCHAR(12)"), ("send_unit_log", "kind", "VARCHAR(8)"),
-                                ("users", "permissions", "VARCHAR(400)")):
-            have = {x["name"] for x in inspect(eng).get_columns(table)}
-            if col not in have:
-                c.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+    _migrate(eng)
     return eng
 
 
