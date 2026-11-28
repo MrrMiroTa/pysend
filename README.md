@@ -16,6 +16,27 @@ python app.py                                          # open http://127.0.0.1:5
 ```
 Excel format: the first sheet, header in row 1, with ALL 7 columns `user, type, plate, imei, expiry_date, status, sent_at` (use the template button). Other columns are ignored; a file missing any of the 7 is rejected. Layout (like `clients_template.xlsx`): `userid` (Telegram Username/ID, may be empty), `type`, `user_type`, `plate`, `imei`, `expiry_date`, `user` (the client Name, e.g. WL112), `status`, `sent_at`. Older files with `user` = Telegram ID and a `name` column still import. Optional: `user_type` (`paid_off` or `rental`, empty = paid_off). Send rule: paid_off = Normal 7 / Company 14 days before expiry, rental = 30 days (1 month). Permissions per user are set by an admin in the Users tab; the account named by `ADMIN_USER` always has every permission.
 
+## Project structure (where to change what)
+
+```
+app.py              starts the app only (config, register blueprints, run server)
+web/
+  config.py         settings from .env
+  services.py       database, client list, Telegram bot, log, first-admin bootstrap
+  permissions.py    permission list + who has what
+  auth.py           sign in/out, CSRF, security headers, @login_required / @need
+  clientlist.py     Dashboard logic: filters, units to send, rows + stats
+  changelog.py      admin change log
+  dashboard.py      Dashboard pages + API (send, import, fill ID, update expiry)
+  report.py         Report API (master / detail / changes / export)
+  users.py          Users + permissions API
+static/js/          core, table, live, tools, report, users, main (loaded in this order)
+static/css/         base, layout, components, login, responsive, tools, features
+```
+
+Other modules (`excel_manager.py`, `database.py`, `telegram_bot.py`, `security.py`, `timeutil.py`) are unchanged.
+New Dashboard feature -> `web/dashboard.py` + `static/js/live.js`; Report -> `web/report.py` + `static/js/report.js`; Users -> `web/users.py` + `static/js/users.js`.
+
 ## Security built in
 - Hashed admin password (scrypt), login throttling (5 fails -> 5 min lock), 30-min idle logout, new session on login
 - CSRF token on every POST; HttpOnly + SameSite=Strict cookies (+Secure when `COOKIE_SECURE=1`)

@@ -1,5 +1,5 @@
 /* Language switch (English default / Khmer). Static page text is translated by matching the text in the HTML;
-   text made by app.js goes through I18N.t("English text with {vars}", {vars}). The choice is kept in this browser. */
+   text made by the static/js files goes through I18N.t("English text with {vars}", {vars}). The choice is kept in this browser. */
 (function () {
   "use strict";
   var KEY = "lang", lang = "en";
@@ -112,7 +112,7 @@
     "Daily report with success and failure reasons": ["Daily report with success and failure reasons", "របាយការណ៍ប្រចាំថ្ងៃ ជាមួយមូលហេតុជោគជ័យ និងបរាជ័យ"], "Built for thousands of units": ["Built for thousands of units", "បង្កើតសម្រាប់ឧបករណ៍រាប់ពាន់"],
     "Welcome back": ["Welcome back", "សូមស្វាគមន៍"], "Sign in to continue.": ["Sign in to continue.", "សូមចូលប្រើដើម្បីបន្ត។"], "Password": ["Password", "ពាក្យសម្ងាត់"], "Sign in": ["Sign in", "ចូលប្រើ"],
     "Show password": ["Show password", "បង្ហាញពាក្យសម្ងាត់"], "Hide password": ["Hide password", "លាក់ពាក្យសម្ងាត់"],
-    // ---- messages made by app.js / server (English key -> English, Khmer) ----
+    // ---- messages made by the static/js files / server (English key -> English, Khmer) ----
     "Wrong username or password.": ["Wrong username or password.", "ឈ្មោះអ្នកប្រើ ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ។"],
     "Too many attempts. Try again in {n} minute(s).": ["Too many attempts. Try again in {n} minute(s).", "ព្យាយាមច្រើនដងពេក។ សូមព្យាយាមម្តងទៀតក្នុងរយៈពេល {n} នាទី។"],
     "Not signed in": ["Not signed in", "មិនទាន់បានចូលប្រើ"],

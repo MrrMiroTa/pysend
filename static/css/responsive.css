@@ -1,0 +1,29 @@
+/* ===== Responsive ===== */
+@media (max-width:1100px){.grid2{grid-template-columns:1fr}}
+@media (max-width:900px){
+ .app{grid-template-columns:minmax(0,1fr)}
+ .side{position:fixed;top:auto;bottom:0;left:0;right:0;height:auto;z-index:40;flex-direction:row;padding:6px 8px calc(6px + env(safe-area-inset-bottom));border-right:0;border-top:1px solid var(--line);gap:0}
+ .side .brand,.side-note,.tab small{display:none}.nav{display:flex;width:100%;gap:2px}.tab{flex:1;flex-direction:column;gap:3px;justify-content:center;padding:7px 4px;text-align:center}.tab em{font-size:11px}
+ .dock{left:0;bottom:calc(68px + env(safe-area-inset-bottom))}.page{padding:16px 14px 220px}.topbar{padding:12px 14px}.me-name,.lbl-sm,.filechip{display:none}
+ .login{grid-template-columns:1fr}.login-hero{display:none}.theme-fab{top:-56px}
+}
+@media (max-width:640px){.hide-sm{display:none}table{min-width:0}th,td{padding:10px 10px}.dock-in{padding:10px}.dock-btns{width:100%}.dock-btns .btn,.force{flex:1}.form-grid{grid-template-columns:1fr 1fr}.stat b{font-size:24px}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.legend.inline .sw.seg-expired{background:var(--red)}.legend.inline .sw.seg-safe{background:var(--green)}.legend.inline .sw.seg-approaching{background:var(--amber)}
+
+/* ===== Phone refinements ===== */
+@media (max-width:640px){
+ .stats{grid-template-columns:1fr 1fr;gap:10px}
+ .stat{flex-direction:column;align-items:flex-start;gap:10px;padding:14px}.stat b{font-size:22px}.chip{width:38px;height:38px;border-radius:12px}.chip .ic{width:19px;height:19px}
+ .title h1{font-size:18px}.card-h h2{font-size:13.5px}.overview{gap:16px;justify-content:center}.donut{width:130px;height:130px}.legend{min-width:100%}
+ .dock{bottom:calc(66px + env(safe-area-inset-bottom));padding:0 10px}
+ .dock-in{padding:8px;gap:6px;border-radius:18px}.state{display:none}
+ .dock-btns{flex-wrap:nowrap;gap:6px;justify-content:space-between}.dock-btns .btn{flex:0 0 auto;padding:10px}.dock-btns .btn.primary{flex:1;padding:10px 12px}
+ .force{flex:0 0 auto;padding:9px 10px;gap:6px}.force span{display:none}
+ .toolbar{gap:10px}.pills{overflow-x:auto;flex-wrap:nowrap;max-width:100%;padding-bottom:2px}.pills span{white-space:nowrap}
+ .page{padding-bottom:170px}.tfoot{font-size:12px}.dt{flex:1}.dt input{width:100%}.seg{width:100%}.seg button{flex:1}
+}
+
+.btn{white-space:nowrap}
+@media (max-width:640px){.dock-btns .btn.primary small{display:none}.grid2>.card{min-width:0}.overview{flex-direction:column}}

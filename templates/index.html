@@ -8,7 +8,13 @@
 <meta name="csrf" content="{{ csrf }}">
 <meta name="perms" content="{{ perms }}">
 <title>GPS Expiry Notifier</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tools.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/features.css') }}">
 <link rel="icon" href="../static/assets/icon.png">
 </head>
 <body>
@@ -81,7 +87,7 @@
         <button id="langBtn" class="btn" type="button" aria-label="Language"><svg class="ic"><use href="#i-globe"/></svg><span class="lang-lbl lbl-sm"></span></button>
         <button id="theme" class="btn icon" type="button" aria-label="Toggle dark / light"><svg class="ic when-light"><use href="#i-moon"/></svg><svg class="ic when-dark"><use href="#i-sun"/></svg></button>
         <span class="me" title="Signed in"><span class="avatar">{{ username[:1]|upper }}</span><span class="me-name">{{ username }}</span></span>
-        <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf }}">
           <button class="btn icon" type="submit" aria-label="Sign out" title="Sign out"><svg class="ic"><use href="#i-log-out"/></svg></button></form>
       </div>
     </header>
@@ -324,6 +330,12 @@
 
 <script src="{{ url_for('static', filename='theme.js') }}"></script>
 <script src="{{ url_for('static', filename='i18n.js') }}"></script>
-<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='js/core.js') }}"></script>
+<script src="{{ url_for('static', filename='js/table.js') }}"></script>
+<script src="{{ url_for('static', filename='js/live.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tools.js') }}"></script>
+<script src="{{ url_for('static', filename='js/report.js') }}"></script>
+<script src="{{ url_for('static', filename='js/users.js') }}"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

@@ -1,0 +1,12 @@
+/* ===== Login ===== */
+.login{display:grid;grid-template-columns:1.05fr 1fr;min-height:100vh}
+.login-hero{display:flex;flex-direction:column;justify-content:center;gap:18px;padding:56px;color:#fff;background:radial-gradient(900px 500px at 10% 0%,#8b5cf6 0%,transparent 60%),linear-gradient(150deg,#3b2bd9,#6a45ff 55%,#9a6bff)}
+.login-hero .brand b,.login-hero .brand span{color:#fff}.login-hero .logo{background:rgba(255,255,255,.18);box-shadow:none}.login-hero h2{font-size:30px;line-height:1.3;letter-spacing:-.02em}
+.login-hero p{opacity:.88;max-width:440px}.login-hero ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:10px}.login-hero li{display:flex;gap:10px;align-items:center}
+.login-card{position:relative;display:grid;align-content:center;gap:10px;width:min(400px,88%);margin:auto}
+.login-card h1{font-size:26px;letter-spacing:-.02em}.login-card form{display:grid;gap:16px;margin-top:10px}
+.login-card label{display:grid;gap:6px;font-weight:600;font-size:13px}
+.inp{display:flex;align-items:center;gap:10px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--muted)}.inp:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+.inp input{flex:1;border:0;box-shadow:none;background:none;padding:12px 0;color:var(--ink)}.peek{border:0;background:none;color:var(--muted);cursor:pointer;padding:4px;display:grid}
+button.primary.big{padding:13px;font:inherit;font-weight:700;border-radius:12px;cursor:pointer}
+.theme-fab{position:absolute;top:-70px;right:0}
