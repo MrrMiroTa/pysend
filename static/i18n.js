@@ -53,10 +53,10 @@
     "ស្លាកលេខ": ["PLATE", "ស្លាកលេខ"], "ថ្ងៃផុតកំណត់": ["EXPIRY DATE", "ថ្ងៃផុតកំណត់"], "នៅសល់": ["DAYS LEFT", "នៅសល់"], "ស្ថានភាព": ["STATUS", "ស្ថានភាព"],
     "Required columns (first sheet, header in row 1):": ["Required columns (first sheet, header in row 1):", "ជួរឈរចាំបាច់ (សន្លឹកទីមួយ ក្បាលជួរនៅជួរទី 1)៖"],
     ". Optional:": [". Optional:", "។ ជម្រើស៖"], "(rental / paid_off, empty = paid_off),": ["(rental / paid_off, empty = paid_off),", "(rental / paid_off ទទេ = paid_off),"],
-    "(e.g. WL112) and": ["(e.g. WL112) and", "(ឧ. WL112) និង"],
-    "(Username/ID, can be filled in later on this page). Other columns are ignored. Browsing a new file ADDS its rows to the current list; a row whose IMEI already exists is skipped.":
-      ["(Username/ID, can be filled in later on this page). Other columns are ignored. Browsing a new file ADDS its rows to the current list; a row whose IMEI already exists is skipped.",
-       "(Username/ID អាចបំពេញនៅទំព័រនេះពេលក្រោយ)។ ជួរឈរផ្សេងត្រូវរំលង។ ការជ្រើសឯកសារថ្មី នឹងបន្ថែមជួរទៅបញ្ជីបច្ចុប្បន្ន ហើយជួរដែល IMEI មានរួចហើយត្រូវរំលង។"],
+    "(Name, e.g. WL112) and": ["(Name, e.g. WL112) and", "(ឈ្មោះ ឧ. WL112) និង"],
+    "(Telegram Username/ID, can be filled in later on this page). Other columns are ignored. Browsing a new file ADDS its rows to the current list; a row whose IMEI already exists is skipped.":
+      ["(Telegram Username/ID, can be filled in later on this page). Other columns are ignored. Browsing a new file ADDS its rows to the current list; a row whose IMEI already exists is skipped.",
+       "(Telegram Username/ID អាចបំពេញនៅទំព័រនេះពេលក្រោយ)។ ជួរឈរផ្សេងត្រូវរំលង។ ការជ្រើសឯកសារថ្មី នឹងបន្ថែមជួរទៅបញ្ជីបច្ចុប្បន្ន ហើយជួរដែល IMEI មានរួចហើយត្រូវរំលង។"],
     "Download template": ["Download template", "ទាញយកគំរូ"], "Showing 0 results": ["Showing 0 results", "បង្ហាញ 0 លទ្ធផល"],
     "Select all matching": ["Select all matching", "ជ្រើសទាំងអស់ដែលត្រូវគ្នា"], "Clear selection": ["Clear selection", "លុបការជ្រើស"],
     "Rows per page": ["Rows per page", "ជួរក្នុងមួយទំព័រ"], "Previous page": ["Previous page", "ទំព័រមុន"], "Next page": ["Next page", "ទំព័របន្ទាប់"],
